@@ -6,4 +6,5 @@
 package main
 
 func main() {
+	println("pouet")
 }
