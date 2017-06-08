@@ -1,13 +1,20 @@
-// Copyright 2017 The hubble-fit authors. All rights reserved.
-// Use of this source code is governed by a BSD-style 
+// Copyright 2017 The hubble-fit Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
-
-// hubble-fit is a program to fit the Hubble diagram with a Cosmological model
+// hubble-fit is a program to fit the Hubble diagram with a Cosmological model.
 
 package main
 
 import (
 	"fmt"
+	"image/color"
+	"io/ioutil"
+	"log"
+	"math"
+	"os"
+	"strconv"
+	"strings"
+
 	"github.com/gonum/integrate"
 	"github.com/gonum/optimize"
 	"github.com/gonum/plot"
@@ -16,12 +23,6 @@ import (
 	"github.com/gonum/plot/vg/draw"
 	"github.com/gonum/stat"
 	"go-hep.org/x/hep/fit"
-	"image/color"
-	"io/ioutil"
-	"log"
-	"math"
-	"strconv"
-	"strings"
 )
 
 /*
@@ -98,16 +99,27 @@ func difference(s1, s2 []float64) ([]float64, []float64) {
 
 	// compute the difference between two slices, value by value
 
-	var diff_slice []float64
-	var abs_diff_slice []float64
+	diff := make([]float64, len(s1))
+	abs := make([]float64, len(s1))
 
-	for i,_ := range(s1) {
+	for i := range(s1) {
 		val := s2[i] - s1[i]
-		diff_slice = append(diff_slice, val)
-		abs_diff_slice = append(abs_diff_slice, math.Abs(val))
+		diff[i] = val
+		abs[i] = math.Abs(val)
 	}
 
-	return diff_slice, abs_diff_slice
+	return diff, abs
+}
+
+func AtoF (s string) float64 {
+
+	// convert a string to float64
+
+	v, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		log.Panic(err)
+	}
+	return v
 }
 
 /*
@@ -122,24 +134,18 @@ func integral(z, n float64) float64 {
 	// integrate.Trapezoidal takes two slices (abscissa and ordinate) from which to compute the integral
 	// inputs : z = redshift, n = number of steps for the trapeze method
 
-	var inte float64
-	abs := make([]float64, 0)
-	ord := make([]float64, 0)
+	abs := make([]float64, int(n+1))
+	ord := make([]float64, int(n+1))
 
-	var i float64
-	for i = 0; i <= n; i++ {
-		val := z * i / n
-		abs = append(abs, val)
+	for i := 0; i <= int(n); i++ {
+		abs[i] = z * float64(i) / n
 	}
 
 	for j := 0; j <= int(n); j++ {
-		val := 1 / math.Sqrt((1+abs[j]*omgM)*(1+abs[j])*(1+abs[j])-(1-omgM)*(2+abs[j])*abs[j])
-		ord = append(ord, val)
+		ord[j] = 1 / math.Sqrt((1+abs[j]*omgM)*(1+abs[j])*(1+abs[j])-(1-omgM)*(2+abs[j])*abs[j])
 	}
 
-	inte = integrate.Trapezoidal(abs, ord)
-
-	return inte
+	return integrate.Trapezoidal(abs, ord)
 
 }
 
@@ -148,10 +154,7 @@ func mu_th(z, n float64) float64 {
 	// compute the theoretical mu for each SN
 	// inputs : z = redshift, n = number of steps for the integral, to be passed to integral function
 
-	var mu_th float64
-	mu_th = 5 * math.Log10(((1+z)*c/(10*H))*integral(z, n))
-
-	return mu_th
+	return 5 * math.Log10(((1+z)*c/(10*H))*integral(z, n))
 }
 
 func mu_th_slice(s []float64, n float64) []float64 {
@@ -159,10 +162,10 @@ func mu_th_slice(s []float64, n float64) []float64 {
 	// builds a slice containing the theoretical distances
 	// inputs : s = slice of the zcmb, n = number of steps for the integral, to be passed to the integral function through mu_th
 
-	diag_ord := make([]float64, 0)
+	diag_ord := make([]float64, len(s))
 
 	for i := 0; i < len(s); i++ {
-		diag_ord = append(diag_ord, mu_th(s[i], n))
+		diag_ord[i] = mu_th(s[i], n)
 	}
 
 	return diag_ord
@@ -179,14 +182,12 @@ func mu_exp_slice(m_stell, mb, stretch, colour []float64) []float64 {
 	// compute experimental mus and add them in an array
 	// inputs : mB = B band peak magnitude, stretch and colour = SALT2 parameters
 
-	slice := make([]float64, 0)
+	slice := make([]float64, len(m_stell))
 	for i := 0; i < len(mb); i++ {
 		if m_stell[i] < 10 {
-			val := mb[i] - Mb + alpha*stretch[i] - beta*colour[i]
-			slice = append(slice, val)
+			slice[i] = mb[i] - Mb + alpha*stretch[i] - beta*colour[i]
 		} else {
-			val := mb[i] - Mb - delta_M + alpha*stretch[i] - beta*colour[i]
-			slice = append(slice, val)
+			slice[i] = mb[i] - Mb - delta_M + alpha*stretch[i] - beta*colour[i]
 		}
 	}
 
@@ -198,10 +199,12 @@ func mu_exp_err(dmb, dstretch, dcolour []float64) []float64 {
 	// compute errors on experimental mus and add them in an array
 	// inputs : dmb, dstretch, dcolour = errors on mb, stretch and colour from JLA data
 
-	slice := make([]float64, 0)
-	for i := 0; i < len(dmb); i++ {
-		val := math.Sqrt(math.Pow(dmb[i], 2) + math.Pow(alpha*dstretch[i], 2) + math.Pow(beta*dcolour[i], 2))
-		slice = append(slice, val)
+	slice := make([]float64, len(dmb))
+	for i := range(dmb) {
+		ai := dmb[i]
+		bi := alpha*dstretch[i]
+		ci := beta*dcolour[i]
+		slice[i] = math.Sqrt(ai*ai + bi*bi + ci*ci)
 	}
 
 	return slice
@@ -214,21 +217,21 @@ Functions for diagrams : plots, fit, etc
 ######
 */
 
-func points(x_values, y_values []float64) plotter.XYs {
+func newPoints(xs, ys []float64) plotter.XYs {
 
 	// creates a plotter.XYs (cloud of points) from given 2D coordinates
-	// inputs : x_values, y_values = slices containing the x and y values respectively
+	// inputs : xs, ys = slices containing the x and y values respectively
 
-	pts := make(plotter.XYs, len(x_values))
+	pts := make(plotter.XYs, len(xs))
 	for i := range pts {
-		pts[i].X = x_values[i]
-		pts[i].Y = y_values[i]
+		pts[i].X = xs[i]
+		pts[i].Y = ys[i]
 	}
 
 	return pts
 }
 
-func diag(points plotter.XYs) *plot.Plot {
+func newHubblePlot(points plotter.XYs) *plot.Plot {
 
 	// plot the given points
 	// input : points = plotter.XYs created by the points function
@@ -264,28 +267,20 @@ func modified_integral(z, omega float64) float64 {
 	// modified integral function where omgM is a variablef that can be optimized
 	// inputs : z = redshift, omega = omgM as a free parameter
 
-	var inte float64
-	abs := make([]float64, 0)
-	ord := make([]float64, 0)
+	const n = 1000
+	xs := make([]float64, n+1)
+	ys := make([]float64, n+1)
 
-	var i float64
-	for i = 0; i <= 1000; i++ {
-		val := z * i / 1000
-		abs = append(abs, val)
+	for i := range(xs) {
+		x := z * float64(i) / float64(n)
+		xs[i] = x
+		ys[i] = 1 / math.Sqrt((1+x*omega)*(1+x)*(1+x)-(1-omega)*(2+x)*x)
 	}
 
-	for j := 0; j <= 1000; j++ {
-		val := 1 / math.Sqrt((1+abs[j]*omega)*(1+abs[j])*(1+abs[j])-(1-omega)*(2+abs[j])*abs[j])
-		ord = append(ord, val)
-	}
-
-	inte = integrate.Trapezoidal(abs, ord)
-
-	return inte
-
+	return integrate.Trapezoidal(xs, ys)
 }
 
-func histogram (s []float64) *plot.Plot {
+func newHistogram(s []float64) *plot.Plot {
 
 	// builds the histogram
 	// input : s = slice containing the values to plot
@@ -296,7 +291,7 @@ func histogram (s []float64) *plot.Plot {
 	}
 
 	val := make(plotter.Values, len(s))
-	for i,_ := range s {
+	for i := range s {
 		val[i] = s[i]
 	}
 
@@ -329,22 +324,47 @@ func main() {
 
 	// creates slices with the needed values from JLA datas
 
-	sn_names := make([]string, 0)	// names
-	zcmb := make([]float64, 0)	// redshift in the cmb frame
-	zhel := make([]float64, 0)	// redshift in the heliocentric frame
-	mb := make([]float64, 0)	// b band peak magnitude
-	dmb := make([]float64, 0)	// b band peak magnitude error
-	stretch := make([]float64, 0)	// stretch factor
-	dstretch := make([]float64, 0)	// stretch factor error
-	colour := make([]float64, 0)	// colour factor
-	dcolour := make([]float64, 0)	// colour factor error
-	m_stell := make([]float64, 0)	// log10 of the host galaxy stellar mass
-	exp := make([]float64, 0)	// supernova sample identifier : 1 = SNLS, 2 = SDSS, 3 = lowz, 4 = Riess HST
-	ra_jla := make([]float64, 0)	// right ascension (in degrees)
-	de_jla := make([]float64, 0)	// declination (in degrees)
+	N := len(supernovae)
+	sn_names := make([]string, N)	// names
+	zcmb := make([]float64, N)	// redshift in the cmb frame
+	zhel := make([]float64, N)	// redshift in the heliocentric frame
+	mb := make([]float64, N)	// b band peak magnitude
+	dmb := make([]float64, N)	// b band peak magnitude error
+	stretch := make([]float64, N)	// stretch factor
+	dstretch := make([]float64, N)	// stretch factor error
+	colour := make([]float64, N)	// colour factor
+	dcolour := make([]float64, N)	// colour factor error
+	m_stell := make([]float64, N)	// log10 of the host galaxy stellar mass
+	exp := make([]float64, N)	// supernova sample identifier : 1 = SNLS, 2 = SDSS, 3 = lowz, 4 = Riess HST
+	ra_jla := make([]float64, N)	// right ascension (in degrees)
+	de_jla := make([]float64, N)	// declination (in degrees)
 
-	for _, v := range supernovae {
+
+//	for _,v := range supernovae {
+//		split_str := strings.Split(v, " ")
+
+
+	for i, v := range supernovae {
 		split_str := strings.Split(v, " ")
+		if len(split_str) != 21 {
+			os.Exit(1)
+		}
+
+		sn_names[i] = split_str[0]
+		zcmb[i]	= AtoF(split_str[1])
+		zhel[i] = AtoF(split_str[2])
+		mb[i] = AtoF(split_str[4])
+		dmb[i] = AtoF(split_str[5])
+		stretch[i] = AtoF(split_str[6])
+		dstretch[i] = AtoF(split_str[7])
+		colour[i] = AtoF(split_str[8])
+		dcolour[i] = AtoF(split_str[9])
+		m_stell[i] = AtoF(split_str[10])
+		exp[i] = AtoF(split_str[17])
+		ra_jla[i] = AtoF(split_str[18])
+		de_jla[i] = AtoF(split_str[19])
+
+		/*
 		for x, y := range split_str {
 			switch x {
 			case 0:
@@ -386,31 +406,19 @@ func main() {
 				z, _ := strconv.ParseFloat(y, 64)
 				de_jla = append(de_jla, z)
 			}
-		}
+		}*/
 	}
 
 	fmt.Println("Number of supernovae : ", len(sn_names))
 
 	// compute and store slices needed for the plots and analysis
 
-	var muexp_data []float64		// experimental mus from SALT2 model
-	muexp_data = mu_exp_slice(m_stell, mb, stretch, colour)
-
-	var muth_data []float64			// theoretical mus from lambdaCDM model
-	muth_data = mu_th_slice(zcmb, 10000)
-
-	var diff_data []float64			// difference between experimental and theoretical mus
-	var abs_diff_data []float64		// absolute values of the differences
-	diff_data, abs_diff_data = difference(muth_data, muexp_data)
-
-	var mean_residuals float64		// mean of the differences
-	mean_residuals = stat.Mean(diff_data, nil)
-
-	var abs_mean_residuals float64		// mean of the absolute differences
-	abs_mean_residuals = stat.Mean(abs_diff_data, nil)
-
-	var muexp_error []float64		// slice containing the error on mu_exp, from error propagation in SALT2 model
-	muexp_error = mu_exp_err(dmb, dstretch, dcolour)
+	muexp_data := mu_exp_slice(m_stell, mb, stretch, colour)	// experimental mus from SALT2 model
+	muth_data := mu_th_slice(zcmb, 10000)				// theoretical mus from lambdaCDM model
+	diff_data, abs_diff_data := difference(muth_data, muexp_data)	// difference and absolute difference between exp and theoretical mus
+	mean_residuals := stat.Mean(diff_data, nil)			// mean of the differences
+	abs_mean_residuals := stat.Mean(abs_diff_data, nil)		// mean of the absolute differences
+	muexp_error := mu_exp_err(dmb, dstretch, dcolour)		// errors on mu_exp, from error propagation in SALT2 model
 
 	fmt.Println("mean of the residuals ", mean_residuals)
 	fmt.Println("mean of the absolute residuals ", abs_mean_residuals)
@@ -436,34 +444,55 @@ func main() {
 */
 	// compute, draw and store the various diagrams
 
-	scatter_data := points(zcmb, muexp_data)
-	diagram := diag(scatter_data)
+	hubblePlot := newHubblePlot(newPoints(zcmb, muexp_data))
+	err = hubblePlot.Save(1080, 720, "hubble_diagram.png")
+	if err != nil {
+		log.Fatalf("Error saving 'hubble_diagram.png' : %v", err)
+	}
+
+	hubblePlot2 := newHubblePlot(newPoints(zcmb, diff_data))
+	err = hubblePlot2.Save(720, 200, "hubble_diagram2.png")
+	if err != nil {
+		log.Fatalf("Error saving 'hubble_diagram2.png' : %v", err)
+	}
+
+	histogram := newHistogram(diff_data)
+	err = histogram.Save(500, 500, "histogram.png")
+	if err != nil {
+		log.Fatalf("Error saving 'histogram.png' : %v", err)
+	}
+	/*
+	scatter_data := newPoints(zcmb, muexp_data)
+	diagram := newHubblePlot(scatter_data)
 	diagram.Save(1080, 720, "hubble_diagram.png")
 
-	scatter2_data := points(zcmb, diff_data)
-	diagram2 := diag(scatter2_data)
+	scatter2_data := newPoints(zcmb, diff_data)
+	diagram2 := newHubblePlot(scatter2_data)
 	diagram2.Save(720, 200, "hubble_diagram2.png")
 
-	histo := histogram(diff_data)
+	histo := newHistogram(diff_data)
 	histo.Save(500, 500, "histogram.png")
-
+*/
 	empty := make([]float64, len(zcmb))
-	params := make([]float64, 0)
-	params = append(params, 0.295, 0.141, 3.101, -19.05, -0.070)
-	res,_ := fit.Curve1D(
+	params := []float64{0.295, 0.141, 3.101, -19.05, -0.070}
+	res, err := fit.Curve1D(
 		fit.Func1D{
 			F: func(z float64, ps []float64) float64 {
-				var index int
+				var i int = -1
 				for p, v := range zcmb {
 					if v == z {
-						index = p
+						i = p
 					}
 				}
-				if m_stell[index] < 10 {
-					return mb[index]-ps[3]+ps[1]*stretch[index]-ps[2]*colour[index] - 5*math.Log10(((1+z)*c/(10*H))*modified_integral(z, ps[0]))
-				} else {
-					return mb[index]-ps[3]-ps[4]+ps[1]*stretch[index]-ps[2]*colour[index] - 5*math.Log10(((1+z)*c/(10*H))*modified_integral(z, ps[0]))
+				if i < 0 {
+					panic("error in retrieving the index of zcmb in the fitting function")
 				}
+
+				out := mb[i]-ps[3]+ps[1]*stretch[i]-ps[2]*colour[i] - 5*math.Log10(((1+z)*c/(10*H))*modified_integral(z, ps[0]))
+				if m_stell[i] >= 10 {
+					out -= ps[4]
+				}
+				return out
 			},
 			X: zcmb,
 			Y: empty,
@@ -472,11 +501,13 @@ func main() {
 		},
 		nil, &optimize.NelderMead{},
 	)
+	if err != nil {
+		log.Fatalf("Error calling Curve1D : %v", err)
+	}
 
 	fmt.Println("Omega M : ", res.X[0])
 	fmt.Println("Alpha : ", res.X[1])
 	fmt.Println("Beta : ", res.X[2])
 	fmt.Println("Mb : ", res.X[3])
 	fmt.Println("Delta_M : ", res.X[4])
-
 }
