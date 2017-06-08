@@ -1,8 +1,8 @@
 // Copyright 2017 The hubble-fit Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
-// hubble-fit is a program to fit the Hubble diagram with a Cosmological model.
 
+// hubble-fit is a program to fit the Hubble diagram with a Cosmological model.
 package main
 
 import (
@@ -363,50 +363,6 @@ func main() {
 		exp[i] = AtoF(split_str[17])
 		ra_jla[i] = AtoF(split_str[18])
 		de_jla[i] = AtoF(split_str[19])
-
-		/*
-		for x, y := range split_str {
-			switch x {
-			case 0:
-				sn_names = append(sn_names, y)
-			case 1:
-				z, _ := strconv.ParseFloat(y, 64)
-				zcmb = append(zcmb, z)
-			case 2:
-				z, _ := strconv.ParseFloat(y, 64)
-				zhel = append(zhel, z)
-			case 4:
-				z, _ := strconv.ParseFloat(y, 64)
-				mb = append(mb, z)
-			case 5:
-				z, _ := strconv.ParseFloat(y, 64)
-				dmb = append(dmb, z)
-			case 6:
-				z, _ := strconv.ParseFloat(y, 64)
-				stretch = append(stretch, z)
-			case 7:
-				z, _ := strconv.ParseFloat(y, 64)
-				dstretch = append(dstretch, z)
-			case 8:
-				z, _ := strconv.ParseFloat(y, 64)
-				colour = append(colour, z)
-			case 9:
-				z, _ := strconv.ParseFloat(y, 64)
-				dcolour = append(dcolour, z)
-			case 10:
-				z, _ := strconv.ParseFloat(y, 64)
-				m_stell = append(m_stell, z)
-			case 17:
-				z, _ := strconv.ParseFloat(y, 64)
-				exp = append(exp, z)
-			case 18:
-				z, _ := strconv.ParseFloat(y, 64)
-				ra_jla = append(ra_jla, z)
-			case 19:
-				z, _ := strconv.ParseFloat(y, 64)
-				de_jla = append(de_jla, z)
-			}
-		}*/
 	}
 
 	fmt.Println("Number of supernovae : ", len(sn_names))
@@ -423,25 +379,6 @@ func main() {
 	fmt.Println("mean of the residuals ", mean_residuals)
 	fmt.Println("mean of the absolute residuals ", abs_mean_residuals)
 
-	// fitting function, without covariance matrix
-	/*
-	ps := make([]float64, 0)
-	ps = append(ps, 0.295)
-	res,_ := fit.Curve1D(
-		fit.Func1D{
-			F: func(z float64, ps []float64) float64 {
-				return 5*math.Log10( ((1+z)*299792458/(10*0.070)) * modified_integral(z, ps[0]) )
-			},
-			X: zcmb,
-			Y: muexp_data,
-			Err: muexp_error,
-			Ps: ps,
-		},
-		nil, &optimize.NelderMead{},
-	)
-
-	fmt.Println("Omega M : ", res.X[0])
-*/
 	// compute, draw and store the various diagrams
 
 	hubblePlot := newHubblePlot(newPoints(zcmb, muexp_data))
@@ -461,18 +398,9 @@ func main() {
 	if err != nil {
 		log.Fatalf("Error saving 'histogram.png' : %v", err)
 	}
-	/*
-	scatter_data := newPoints(zcmb, muexp_data)
-	diagram := newHubblePlot(scatter_data)
-	diagram.Save(1080, 720, "hubble_diagram.png")
 
-	scatter2_data := newPoints(zcmb, diff_data)
-	diagram2 := newHubblePlot(scatter2_data)
-	diagram2.Save(720, 200, "hubble_diagram2.png")
+	// fitting function without covariance matrix
 
-	histo := newHistogram(diff_data)
-	histo.Save(500, 500, "histogram.png")
-*/
 	empty := make([]float64, len(zcmb))
 	params := []float64{0.295, 0.141, 3.101, -19.05, -0.070}
 	res, err := fit.Curve1D(
