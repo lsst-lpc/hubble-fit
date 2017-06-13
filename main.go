@@ -15,14 +15,17 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/astrogo/fitsio"
+	"github.com/gonum/diff/fd"
 	"github.com/gonum/integrate"
+	"github.com/gonum/matrix/mat64"
 	"github.com/gonum/optimize"
 	"github.com/gonum/plot"
 	"github.com/gonum/plot/plotter"
 	"github.com/gonum/plot/vg"
 	"github.com/gonum/plot/vg/draw"
 	"github.com/gonum/stat"
-	"go-hep.org/x/hep/fit"
+//	"go-hep.org/x/hep/fit"
 )
 
 /*
@@ -115,7 +118,8 @@ func AtoF (s string) float64 {
 
 	// convert a string to float64
 
-	v, err := strconv.ParseFloat(s, 64)
+	a := strings.Trim(s, " ")
+	v, err := strconv.ParseFloat(a, 64)
 	if err != nil {
 		log.Panic(err)
 	}
@@ -307,6 +311,182 @@ func newHistogram(s []float64) *plot.Plot {
 
 /*
 ######
+Matrices and chi2
+######
+*/
+
+// reads a FITS fil, extracts the data and convert them into the corresponding matrix
+func matrice (file string) *mat64.Dense {
+
+	r, err := os.Open(file)
+	if err != nil {
+		panic(err)
+	}
+	defer r.Close()
+
+	fits, err := fitsio.Open(r)
+	if err != nil {
+		panic(err)
+	}
+	defer fits.Close()
+
+	hdu := fits.HDU(0)
+	img := hdu.(fitsio.Image)
+	hdr := img.Header()
+	rows := hdr.Axes()[0]
+	cols := hdr.Axes()[1]
+	raw := make([]float64, rows*cols)
+	err = img.Read(&raw)
+
+	Mat := mat64.NewDense(2220, 2220, raw)
+
+	return Mat
+}
+
+// builds the covariance matrix (equation 13)
+func covar_matrix (file string, alpha, beta float64, N int, c_eta *mat64.Dense) *mat64.Dense {
+
+	a_vector := mat64.NewVector(3, []float64{1, alpha, -beta})
+
+	c_mat_elements := make([]float64, N*N)
+	i, j := 0, 0
+	for k := 0; k < N*N; k++ {
+		submat := c_eta.Slice(i, i+3, j, j+3)
+		element := mat64.Inner(a_vector, submat, a_vector)
+		c_mat_elements[k] = element
+		if i+3 < N*3-1 {
+			i = i+3
+		} else {
+			j = j+3
+			i = 0
+		}
+	}
+
+	c_mat := mat64.NewDense(N, N, c_mat_elements)
+
+	data, err := ioutil.ReadFile(file)
+	if err != nil {
+		fmt.Println(err)
+	}
+	str := strings.Trim(string(data), " \n")
+	elements := strings.Split(str, "\n")
+	elements = append(elements[:0], elements[4:]...)
+
+	sigma_mat := mat64.NewDense(N, N, nil)
+	for i :=0; i<N; i++ {
+		words := strings.Split(elements[i], " ")
+		sz, slen, scoh := AtoF(words[4]), AtoF(words[2]), AtoF(words[0])
+		val := ((5*150000)/(sz*c))*((5*150000)/(sz*c)) + slen*slen + scoh*scoh
+		sigma_mat.Set(i, i, val)
+	}
+
+	covar_mat := mat64.NewDense(N, N, nil)
+	covar_mat.Add(c_mat, sigma_mat)
+
+	return covar_mat
+}
+
+func chi2 (diff_data []float64, covar_matrix *mat64.Dense) float64 {
+
+	mu_vector := mat64.NewVector(len(diff_data), diff_data)
+	covar_matrix.Inverse(covar_matrix)
+
+	chi2 := mat64.Inner(mu_vector, covar_matrix, mu_vector)
+
+	return chi2
+}
+
+// Curve1D returns the result of a non-linear least squares to fit
+// a function f to the underlying data with method m.
+func Curve1D(f Func1D, settings *optimize.Settings, m optimize.Method) (*optimize.Result, error) {
+	f.init()
+
+	p := optimize.Problem{
+		Func: f.fct,
+		Grad: f.grad,
+	}
+
+	if m == nil {
+		m = &optimize.NelderMead{}
+	}
+
+	p0 := make([]float64, len(f.Ps))
+	copy(p0, f.Ps)
+	return optimize.Local(p, p0, settings, m)
+}
+
+//Func1D describes a 1D functino to fit some data
+// this is a modified version of the fit function from the go-hep package
+type Func1D struct {
+	// F is the function to minimize.
+	// ps is the slice of parameters to optimize during the fit.
+	F func(x float64, ps []float64) float64
+
+	// N is the number of parameters to optimize during the fit.
+	// If N is 0, Ps must not be nil.
+	N int
+
+	// Ps is the initial values for the parameters.
+	// If Ps is nil, the set of initial parameters values is a slice of
+	// length N filled with zeros.
+	Ps []float64
+
+	X   []float64
+	Y   []float64
+	Err []float64
+
+	sig2 []float64 // inverse of squares of measurement errors along Y.
+
+	fct  func(ps []float64) float64 // cost function (objective function)
+	grad func(grad, ps []float64)
+}
+
+func (f *Func1D) init() {
+
+	f.sig2 = make([]float64, len(f.Y))
+	switch {
+	default:
+		for i := range f.Y {
+			f.sig2[i] = 1
+		}
+	case f.Err != nil:
+		for i, v := range f.Err {
+			f.sig2[i] = 1 / (v * v)
+		}
+	}
+
+	if f.Ps == nil {
+		f.Ps = make([]float64, f.N)
+	}
+
+	if len(f.Ps) == 0 {
+		panic("fit: invalid number of initial parameters")
+	}
+
+	if len(f.X) != len(f.Y) {
+		panic("fit: mismatch length")
+	}
+
+	if len(f.sig2) != len(f.Y) {
+		panic("fit: mismatch length")
+	}
+
+	f.fct = func(ps []float64) float64 {
+		var chi2 float64
+		for i := range f.X {
+			res := f.F(f.X[i], ps) - f.Y[i]
+			chi2 += res * res * f.sig2[i]
+		}
+		return 0.5 * chi2
+	}
+
+	f.grad = func(grad, ps []float64) {
+		fd.Gradient(grad, f.fct, ps, nil)
+	}
+}
+
+/*
+######
 Main function
 ######
 */
@@ -339,11 +519,6 @@ func main() {
 	ra_jla := make([]float64, N)	// right ascension (in degrees)
 	de_jla := make([]float64, N)	// declination (in degrees)
 
-
-//	for _,v := range supernovae {
-//		split_str := strings.Split(v, " ")
-
-
 	for i, v := range supernovae {
 		split_str := strings.Split(v, " ")
 		if len(split_str) != 21 {
@@ -374,7 +549,7 @@ func main() {
 	diff_data, abs_diff_data := difference(muth_data, muexp_data)	// difference and absolute difference between exp and theoretical mus
 	mean_residuals := stat.Mean(diff_data, nil)			// mean of the differences
 	abs_mean_residuals := stat.Mean(abs_diff_data, nil)		// mean of the absolute differences
-	muexp_error := mu_exp_err(dmb, dstretch, dcolour)		// errors on mu_exp, from error propagation in SALT2 model
+//	muexp_error := mu_exp_err(dmb, dstretch, dcolour)		// errors on mu_exp, from error propagation in SALT2 model
 
 	fmt.Println("mean of the residuals ", mean_residuals)
 	fmt.Println("mean of the absolute residuals ", abs_mean_residuals)
@@ -399,12 +574,46 @@ func main() {
 		log.Fatalf("Error saving 'histogram.png' : %v", err)
 	}
 
-	// fitting function without covariance matrix
+	// reads the FITS files and build the matrix C_eta
 
-	empty := make([]float64, len(zcmb))
-	params := []float64{0.295, 0.141, 3.101, -19.05, -0.070}
-	res, err := fit.Curve1D(
-		fit.Func1D{
+	c_eta := mat64.NewDense(2220, 2220, nil)
+	c_eta_temp := mat64.NewDense(2220, 2220, nil)
+
+	c_eta_temp = matrice("./covmat/C_bias.fits")
+	c_eta.Add(c_eta, c_eta_temp)
+
+	c_eta_temp = matrice("./covmat/C_cal.fits")
+	c_eta.Add(c_eta, c_eta_temp)
+
+	c_eta_temp = matrice("./covmat/C_dust.fits")
+	c_eta.Add(c_eta, c_eta_temp)
+
+	c_eta_temp = matrice("./covmat/C_host.fits")
+	c_eta.Add(c_eta, c_eta_temp)
+
+	c_eta_temp = matrice("./covmat/C_model.fits")
+	c_eta.Add(c_eta, c_eta_temp)
+
+	c_eta_temp = matrice("./covmat/C_nonia.fits")
+	c_eta.Add(c_eta, c_eta_temp)
+
+	c_eta_temp = matrice("./covmat/C_pecvel.fits")
+	c_eta.Add(c_eta, c_eta_temp)
+
+	c_eta_temp = matrice("./covmat/C_stat.fits")
+	c_eta.Add(c_eta, c_eta_temp)
+
+
+	covariance_matrix := covar_matrix("./covmat/sigma_mu.txt", alpha, beta, N, c_eta)
+
+	chi2 := chi2(diff_data, covariance_matrix)
+	fmt.Println("Chi2 : ", chi2)
+
+/*
+	empty := make([]float64, N)
+	params := []float64{0.295, 0.141, 3.101, -19.05, -0.70}
+	res, err := Curve1D(
+		Func1D{
 			F: func(z float64, ps []float64) float64 {
 				var i int = -1
 				for p, v := range zcmb {
@@ -413,7 +622,7 @@ func main() {
 					}
 				}
 				if i < 0 {
-					panic("error in retrieving the index of zcmb in the fitting function")
+					panic("error in retrieving index value in the fitting function")
 				}
 
 				out := mb[i]-ps[3]+ps[1]*stretch[i]-ps[2]*colour[i] - 5*math.Log10(((1+z)*c/(10*H))*modified_integral(z, ps[0]))
@@ -437,5 +646,6 @@ func main() {
 	fmt.Println("Alpha : ", res.X[1])
 	fmt.Println("Beta : ", res.X[2])
 	fmt.Println("Mb : ", res.X[3])
-	fmt.Println("Delta_M : ", res.X[4])
+	fmt.Println("Delta M : ", res.X[4])
+*/
 }
