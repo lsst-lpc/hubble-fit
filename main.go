@@ -46,61 +46,15 @@ const (
 
 /*
 #####
-Basic analysis functions
+Miscellaneous functions
 #####
 */
 
-func Sx(s []float64) float64 {
-
-	// compute the standard deviation of a given distribution
-
-	var sum, sigma float64
-	for _, i := range s {
-		sum += i * i
-	}
-
-	sigma = math.Sqrt(sum / (float64(len(s)) - 1))
-
-	return sigma
-}
-
-func RMS(s []float64) float64 {
-
-	// compute the root mean square of a given distribution
-
-	var sum, rms float64
-	for _, i := range s {
-		sum = +i * i
-	}
-
-	rms = math.Sqrt(sum / float64(len(s)))
-
-	return rms
-}
-
-func RMSerr(s []float64) float64 {
-
-	// compute the error on the root mean square of a given distribution
-
-	var rmserr float64
-	rmserr = Sx(s) / math.Sqrt(2*float64(len(s)))
-
-	return rmserr
-}
-
-func MEANerr(s []float64) float64 {
-
-	// compute the error on the mean of a given distribution
-
-	var meanerr float64
-	meanerr = Sx(s) / math.Sqrt(float64(len(s)))
-
-	return meanerr
-}
-
+// compute the differences between two slices, value by value
 func difference(s1, s2 []float64) ([]float64, []float64) {
 
-	// compute the difference between two slices, value by value
+	// input : s1, s2 : two slices
+	// output : diff : slice of the term by term differences, abs : slice of the absolute values of the differences
 
 	diff := make([]float64, len(s1))
 	abs := make([]float64, len(s1))
@@ -114,9 +68,10 @@ func difference(s1, s2 []float64) ([]float64, []float64) {
 	return diff, abs
 }
 
+// convert a string to float64
 func AtoF (s string) float64 {
 
-	// convert a string to float64
+	// input : s : string
 
 	a := strings.Trim(s, " ")
 	v, err := strconv.ParseFloat(a, 64)
@@ -132,9 +87,9 @@ Theoretical mu
 #####
 */
 
+// compute the integral of the D_l function, based on the trapeze method
 func integral(z, n float64) float64 {
 
-	// compute the integral of the D_l function, based on the trapeze method
 	// integrate.Trapezoidal takes two slices (abscissa and ordinate) from which to compute the integral
 	// inputs : z = redshift, n = number of steps for the trapeze method
 
@@ -153,22 +108,22 @@ func integral(z, n float64) float64 {
 
 }
 
+// compute the theoretical mu for each SN
 func mu_th(z, n float64) float64 {
 
-	// compute the theoretical mu for each SN
 	// inputs : z = redshift, n = number of steps for the integral, to be passed to integral function
 
 	return 5 * math.Log10(((1+z)*c/(10*H))*integral(z, n))
 }
 
+// builds a slice containing the theoretical distances
 func mu_th_slice(s []float64, n float64) []float64 {
 
-	// builds a slice containing the theoretical distances
 	// inputs : s = slice of the zcmb, n = number of steps for the integral, to be passed to the integral function through mu_th
 
 	diag_ord := make([]float64, len(s))
 
-	for i := 0; i < len(s); i++ {
+	for i := range s {
 		diag_ord[i] = mu_th(s[i], n)
 	}
 
@@ -181,9 +136,9 @@ Experimental mu
 ######
 */
 
+// compute experimental mus and add them in an array
 func mu_exp_slice(m_stell, mb, stretch, colour []float64) []float64 {
 
-	// compute experimental mus and add them in an array
 	// inputs : mB = B band peak magnitude, stretch and colour = SALT2 parameters
 
 	slice := make([]float64, len(m_stell))
@@ -198,9 +153,9 @@ func mu_exp_slice(m_stell, mb, stretch, colour []float64) []float64 {
 	return slice
 }
 
+// compute errors on experimental mus and add them in an array
 func mu_exp_err(dmb, dstretch, dcolour []float64) []float64 {
 
-	// compute errors on experimental mus and add them in an array
 	// inputs : dmb, dstretch, dcolour = errors on mb, stretch and colour from JLA data
 
 	slice := make([]float64, len(dmb))
@@ -221,9 +176,9 @@ Functions for diagrams : plots, fit, etc
 ######
 */
 
+// creates a plotter.XYs (cloud of points) from given 2D coordinates
 func newPoints(xs, ys []float64) plotter.XYs {
 
-	// creates a plotter.XYs (cloud of points) from given 2D coordinates
 	// inputs : xs, ys = slices containing the x and y values respectively
 
 	pts := make(plotter.XYs, len(xs))
@@ -235,9 +190,9 @@ func newPoints(xs, ys []float64) plotter.XYs {
 	return pts
 }
 
+// plos the given points
 func newHubblePlot(points plotter.XYs) *plot.Plot {
 
-	// plot the given points
 	// input : points = plotter.XYs created by the points function
 
 	p, err := plot.New()
@@ -266,9 +221,9 @@ func newHubblePlot(points plotter.XYs) *plot.Plot {
 	return p
 }
 
+// modified integral function where omgM is a variable that can be optimized
 func modified_integral(z, omega float64) float64 {
 
-	// modified integral function where omgM is a variablef that can be optimized
 	// inputs : z = redshift, omega = omgM as a free parameter
 
 	const n = 1000
@@ -284,9 +239,9 @@ func modified_integral(z, omega float64) float64 {
 	return integrate.Trapezoidal(xs, ys)
 }
 
+// builds a histogram from a given slice of values
 func newHistogram(s []float64) *plot.Plot {
 
-	// builds the histogram
 	// input : s = slice containing the values to plot
 
 	p, err := plot.New()
@@ -315,9 +270,11 @@ Matrices and chi2
 ######
 */
 
+// test function for a chi2 computation that takes into account the covariance matrix
 func Chi2(ps []float64) float64 {
 
 	// reads the raw datas and format it into a slice of strings, each containing the information for a SN
+
 	datas, err := ioutil.ReadFile("./data/jla_lcparams.txt")
 	if err != nil {
 		fmt.Println(err)
@@ -347,6 +304,8 @@ func Chi2(ps []float64) float64 {
 		colour[i] = AtoF(split_str[8])
 		m_stell[i] = AtoF(split_str[10])
 	}
+
+	// creats slices for theoretical and experimental mus and the associated errors
 
 	mu_exp, mu_th, mu_diff := make([]float64, N), make([]float64, N), make([]float64, N)
 
@@ -378,6 +337,8 @@ func Chi2(ps []float64) float64 {
 		mu_diff[i] = mu_exp[i] - mu_th[i]
 	}
 
+	// reads the FITS files and builds C_eta
+
 	c_eta := mat64.NewDense(2220, 2220, nil)
 	c_eta_temp := mat64.NewDense(2220, 2220, nil)
 
@@ -405,6 +366,7 @@ func Chi2(ps []float64) float64 {
 	c_eta_temp = matrice("./covmat/C_stat.fits")
 	c_eta.Add(c_eta, c_eta_temp)
 
+	// computes the A^t C_eta A part of the covariance matrix
 	a_vector := mat64.NewVector(3, []float64{1, ps[1], -ps[2]})
 
 	c_mat_elements := make([]float64, N*N)
@@ -422,6 +384,8 @@ func Chi2(ps []float64) float64 {
 	}
 
 	c_mat := mat64.NewDense(N, N, c_mat_elements)
+
+	// builds the covariance matrix by addind the diagonal matrices
 
 	data, err := ioutil.ReadFile("./covmat/sigma_mu.txt")
 	if err != nil {
@@ -442,7 +406,12 @@ func Chi2(ps []float64) float64 {
 	covmat := mat64.NewDense(N, N, nil)
 	covmat.Add(c_mat, sigma_mat)
 
+	// builds the vector mu_hat - mu_lambdaCDM
+
 	mu_vector := mat64.NewVector(len(mu_diff), mu_diff)
+
+	// inverses the matrix C using a Cholesky decomposition
+
 	rows, cols := covmat.Dims()
 	if rows != cols {
 		log.Fatalf("cov-matrix not square")
@@ -463,10 +432,33 @@ func Chi2(ps []float64) float64 {
 		log.Fatal(err2)
 	}
 
+	// returns the final chi2
+
 	return mat64.Inner(mu_vector, inv, mu_vector)
 }
 
-/*
+// test function for the computaion of chi2
+func FitChi2(f func(ps []float64) float64, ps []float64, settings *optimize.Settings, m optimize.Method) (*optimize.Result, error) {
+	grad := func(grad, ps []float64) {
+		fd.Gradient(grad, f, ps, nil)
+	}
+
+	if m == nil {
+		m = &optimize.NelderMead{}
+	}
+
+	p0 := make([]float64, len(ps))
+	copy(p0, ps)
+
+	p := optimize.Problem{
+		Func: f,
+		Grad: grad,
+	}
+
+	return optimize.Local(p, p0, settings, m)
+}
+
+
 
 // reads a FITS fil, extracts the data and convert them into the corresponding matrix
 func matrice (file string) *mat64.Dense {
@@ -496,163 +488,6 @@ func matrice (file string) *mat64.Dense {
 	return Mat
 }
 
-// builds the covariance matrix (equation 13)
-func covar_matrix (file string, alpha, beta float64, N int, c_eta *mat64.Dense) *mat64.Dense {
-
-	a_vector := mat64.NewVector(3, []float64{1, alpha, -beta})
-
-	c_mat_elements := make([]float64, N*N)
-	i, j := 0, 0
-	for k := 0; k < N*N; k++ {
-		submat := c_eta.Slice(i, i+3, j, j+3)
-		element := mat64.Inner(a_vector, submat, a_vector)
-		c_mat_elements[k] = element
-		if i+3 < N*3-1 {
-			i = i+3
-		} else {
-			j = j+3
-			i = 0
-		}
-	}
-
-	c_mat := mat64.NewDense(N, N, c_mat_elements)
-
-	data, err := ioutil.ReadFile(file)
-	if err != nil {
-		fmt.Println(err)
-	}
-	str := strings.Trim(string(data), " \n")
-	elements := strings.Split(str, "\n")
-	elements = append(elements[:0], elements[4:]...)
-
-	sigma_mat := mat64.NewDense(N, N, nil)
-	for i :=0; i<N; i++ {
-		words := strings.Split(elements[i], " ")
-		sz, slen, scoh := AtoF(words[4]), AtoF(words[2]), AtoF(words[0])
-		val := ((5*150000)/(sz*c))*((5*150000)/(sz*c)) + slen*slen + scoh*scoh
-		sigma_mat.Set(i, i, val)
-	}
-
-	covar_mat := mat64.NewDense(N, N, nil)
-	covar_mat.Add(c_mat, sigma_mat)
-
-	return covar_mat
-}
-
-func chi2 (diff_data []float64, covmat *mat64.Dense) float64 {
-
-	mu_vector := mat64.NewVector(len(diff_data), diff_data)
-	rows, cols := covmat.Dims()
-	if rows != cols {
-		log.Fatalf("cov-matrix not square")
-	}
-	inv := mat64.NewSymDense(rows, nil)
-	for i := 0; i < rows; i++ {
-		for j := i; j< rows; j++ {
-			inv.SetSym(i, j, covmat.At(i, j))
-		}
-	}
-	var chol mat64.Cholesky
-	if ok := chol.Factorize(inv); !ok {
-		log.Fatalf("cov-matrix not positive semi-definite")
-	}
-
-	err := inv.InverseCholesky(&chol)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	return mat64.Inner(mu_vector, inv, mu_vector)
-}
-*/
-// Curve1D returns the result of a non-linear least squares to fit
-// a function f to the underlying data with method m.
-func Curve1D(f Func1D, settings *optimize.Settings, m optimize.Method) (*optimize.Result, error) {
-	f.init()
-
-	p := optimize.Problem{
-		Func: f.fct,
-		Grad: f.grad,
-	}
-
-	if m == nil {
-		m = &optimize.NelderMead{}
-	}
-
-	p0 := make([]float64, len(f.Ps))
-	copy(p0, f.Ps)
-	return optimize.Local(p, p0, settings, m)
-}
-
-//Func1D describes a 1D function to fit some data
-// this is a modified version of the fit function from the go-hep package
-type Func1D struct {
-	// F is the function to minimize.
-	// ps is the slice of parameters to optimize during the fit.
-	F func(x float64, ps []float64) float64
-
-	// N is the number of parameters to optimize during the fit.
-	// If N is 0, Ps must not be nil.
-	N int
-
-	// Ps is the initial values for the parameters.
-	// If Ps is nil, the set of initial parameters values is a slice of
-	// length N filled with zeros.
-	Ps []float64
-
-	X   []float64
-	Y   []float64
-	Err []float64
-
-	sig2 []float64 // inverse of squares of measurement errors along Y.
-
-	fct  func(ps []float64) float64 // cost function (objective function)
-	grad func(grad, ps []float64)
-}
-
-func (f *Func1D) init() {
-
-	f.sig2 = make([]float64, len(f.Y))
-	switch {
-	default:
-		for i := range f.Y {
-			f.sig2[i] = 1
-		}
-	case f.Err != nil:
-		for i, v := range f.Err {
-			f.sig2[i] = 1 / (v * v)
-		}
-	}
-
-	if f.Ps == nil {
-		f.Ps = make([]float64, f.N)
-	}
-
-	if len(f.Ps) == 0 {
-		panic("fit: invalid number of initial parameters")
-	}
-
-	if len(f.X) != len(f.Y) {
-		panic("fit: mismatch length")
-	}
-
-	if len(f.sig2) != len(f.Y) {
-		panic("fit: mismatch length")
-	}
-
-	f.fct = func(ps []float64) float64 {
-		var chi2 float64
-		for i := range f.X {
-			res := f.F(f.X[i], ps) - f.Y[i]
-			chi2 += res * res * f.sig2[i]
-		}
-		return 0.5 * chi2
-	}
-
-	f.grad = func(grad, ps []float64) {
-		fd.Gradient(grad, f.fct, ps, nil)
-	}
-}
 
 /*
 ######
@@ -743,80 +578,9 @@ func main() {
 		log.Fatalf("Error saving 'histogram.png' : %v", err)
 	}
 
-/*	// reads the FITS files and build the matrix C_eta
+	//computes the best values for the five parameters by minimizing chi2
 
-	c_eta := mat64.NewDense(2220, 2220, nil)
-	c_eta_temp := mat64.NewDense(2220, 2220, nil)
-
-	c_eta_temp = matrice("./covmat/C_bias.fits")
-	c_eta.Add(c_eta, c_eta_temp)
-
-	c_eta_temp = matrice("./covmat/C_cal.fits")
-	c_eta.Add(c_eta, c_eta_temp)
-
-	c_eta_temp = matrice("./covmat/C_dust.fits")
-	c_eta.Add(c_eta, c_eta_temp)
-
-	c_eta_temp = matrice("./covmat/C_host.fits")
-	c_eta.Add(c_eta, c_eta_temp)
-
-	c_eta_temp = matrice("./covmat/C_model.fits")
-	c_eta.Add(c_eta, c_eta_temp)
-
-	c_eta_temp = matrice("./covmat/C_nonia.fits")
-	c_eta.Add(c_eta, c_eta_temp)
-
-	c_eta_temp = matrice("./covmat/C_pecvel.fits")
-	c_eta.Add(c_eta, c_eta_temp)
-
-	c_eta_temp = matrice("./covmat/C_stat.fits")
-	c_eta.Add(c_eta, c_eta_temp)
-
-
-	covariance_matrix := covar_matrix("./covmat/sigma_mu.txt", alpha, beta, N, c_eta)
-
-	chi2 := chi2(diff_data, covariance_matrix)
-	fmt.Println("Chi2 : ", chi2)
-
-	empty := make([]float64, N)
-	params := []float64{0.295, 0.141, 3.101, -19.05, -0.70}
-	res, err := Curve1D(
-		Func1D{
-			F: func(z float64, ps []float64) float64 {
-				var i int = -1
-				for p, v := range zcmb {
-					if v == z {
-						i = p
-					}
-				}
-				if i < 0 {
-					panic("error in retrieving index value in the fitting function")
-				}
-
-				out := mb[i]-ps[3]+ps[1]*stretch[i]-ps[2]*colour[i] - 5*math.Log10(((1+z)*c/(10*H))*modified_integral(z, ps[0]))
-				if m_stell[i] >= 10 {
-					out -= ps[4]
-				}
-				return out
-			},
-			X: zcmb,
-			Y: empty,
-			Err: muexp_error,
-			Ps: params,
-		},
-		nil, &optimize.NelderMead{},
-	)
-	if err != nil {
-		log.Fatalf("Error calling Curve1D : %v", err)
-	}
-
-	fmt.Println("Omega M : ", res.X[0])
-	fmt.Println("Alpha : ", res.X[1])
-	fmt.Println("Beta : ", res.X[2])
-	fmt.Println("Mb : ", res.X[3])
-	fmt.Println("Delta M : ", res.X[4])
-*/
-	var params = []float64{0.295, 0.141, 3.101, -19.05, -0.070}
-	temp := Chi2(params)
-	fmt.Println(temp)
+	res, err := FitChi2(Chi2, []float64{0.295, 0.141, 3.101, -19.05, -0.70}, nil, nil)
+	if err != nil { panic(err) }
+	fmt.Printf("res=%v\n",res)
 }
