@@ -40,6 +40,10 @@ const (
 	delta_M = -0.070    // uncertainty on the absolute blue magnitude
 )
 
+var (
+	Ceta *mat.Dense
+)
+
 func main() {
 
 	// reads the raw datas and format it into a slice of strings, each containing the information for a SN
@@ -230,17 +234,7 @@ func Chi2(ps []float64) float64 {
 		mu_diff[i] = mu_exp[i] - mu_th[i]
 	}
 
-	// reads the FITS files and builds C_eta
-
-	c_eta := mat.NewDense(2220, 2220, nil)
-	c_eta.Add(c_eta, newDenseFrom("./covmat/C_bias.fits"))
-	c_eta.Add(c_eta, newDenseFrom("./covmat/C_cal.fits"))
-	c_eta.Add(c_eta, newDenseFrom("./covmat/C_dust.fits"))
-	c_eta.Add(c_eta, newDenseFrom("./covmat/C_host.fits"))
-	c_eta.Add(c_eta, newDenseFrom("./covmat/C_model.fits"))
-	c_eta.Add(c_eta, newDenseFrom("./covmat/C_nonia.fits"))
-	c_eta.Add(c_eta, newDenseFrom("./covmat/C_pecvel.fits"))
-	c_eta.Add(c_eta, newDenseFrom("./covmat/C_stat.fits"))
+	c_eta := getCeta()
 
 	// computes the A^t C_eta A part of the covariance matrix
 	a_vector := mat.NewVecDense(3, []float64{1, ps[1], -ps[2]})
@@ -532,4 +526,20 @@ func newDenseFrom(file string) *mat.Dense {
 	}
 
 	return mat.NewDense(2220, 2220, raw)
+}
+
+func getCeta() *mat.Dense {
+	return Ceta
+}
+
+func init() {
+	Ceta = mat.NewDense(2220, 2220, nil)
+	Ceta.Add(Ceta, newDenseFrom("./covmat/C_bias.fits"))
+	Ceta.Add(Ceta, newDenseFrom("./covmat/C_cal.fits"))
+	Ceta.Add(Ceta, newDenseFrom("./covmat/C_dust.fits"))
+	Ceta.Add(Ceta, newDenseFrom("./covmat/C_host.fits"))
+	Ceta.Add(Ceta, newDenseFrom("./covmat/C_model.fits"))
+	Ceta.Add(Ceta, newDenseFrom("./covmat/C_nonia.fits"))
+	Ceta.Add(Ceta, newDenseFrom("./covmat/C_pecvel.fits"))
+	Ceta.Add(Ceta, newDenseFrom("./covmat/C_stat.fits"))
 }
