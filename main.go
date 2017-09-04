@@ -134,6 +134,201 @@ func main() {
 	fmt.Printf("res=%v\n", res)
 }
 
+// FitChi2 is the test function for the computation of chi2
+func FitChi2(f func(ps []float64) float64, ps []float64, settings *optimize.Settings, m optimize.Method) (*optimize.Result, error) {
+	grad := func(grad, ps []float64) {
+		fd.Gradient(grad, f, ps, nil)
+	}
+
+	if m == nil {
+		m = &optimize.NelderMead{}
+	}
+
+	p0 := make([]float64, len(ps))
+	copy(p0, ps)
+
+	p := optimize.Problem{
+		Func: f,
+		Grad: grad,
+	}
+
+	return optimize.Local(p, p0, settings, m)
+}
+
+// Chi2 is the test function for a chi2 computation that takes into account the covariance matrix
+func Chi2(ps []float64) float64 {
+
+	// reads the raw datas and format it into a slice of strings, each containing the information for a SN
+
+	datas, err := ioutil.ReadFile("./data/jla_lcparams.txt")
+	if err != nil {
+		log.Fatal(err)
+	}
+	str := strings.Trim(string(datas), "\n")               // gets rid, if needed, of a new line symbol at the end of the file
+	supernovae := strings.Split(str, "\n")                 // builds a slice with data for a SN in each item
+	supernovae = append(supernovae[:0], supernovae[1:]...) // suppress the first item (labels of the columns)
+
+	// creates slices with the needed values from JLA datas
+
+	var (
+		N       = len(supernovae)
+		zcmb    = make([]float64, N) // redshift in the cmb frame
+		mb      = make([]float64, N) // b band peak magnitude
+		stretch = make([]float64, N) // stretch factor
+		colour  = make([]float64, N) // colour factor
+		m_stell = make([]float64, N) // log10 of the host galaxy stellar mass
+	)
+
+	for i, v := range supernovae {
+		split_str := strings.Split(v, " ")
+		if len(split_str) != 21 {
+			os.Exit(1)
+		}
+
+		zcmb[i] = atof(split_str[1])
+		mb[i] = atof(split_str[4])
+		stretch[i] = atof(split_str[6])
+		colour[i] = atof(split_str[8])
+		m_stell[i] = atof(split_str[10])
+	}
+
+	// creates slices for theoretical and experimental mus and the associated errors
+
+	var (
+		mu_exp  = make([]float64, N)
+		mu_th   = make([]float64, N)
+		mu_diff = make([]float64, N)
+	)
+
+	for i := 0; i < N; i++ {
+		if m_stell[i] < 10 {
+			mu_exp[i] = mb[i] - ps[3] + ps[1]*stretch[i] - ps[2]*colour[i]
+		} else {
+			mu_exp[i] = mb[i] - ps[3] - ps[4] + ps[1]*stretch[i] - ps[2]*colour[i]
+		}
+	}
+
+	var n int = 1000
+	for i := 0; i < N; i++ {
+		xs := make([]float64, n+1)
+		ys := make([]float64, n+1)
+
+		for k := range xs {
+			xs[k] = zcmb[i] * float64(k) / float64(n)
+			ys[k] = 1 / math.Sqrt((1+xs[k]*ps[0])*(1+xs[k])*(1+xs[k])-(1-ps[0])*(2+xs[k])*xs[k])
+		}
+
+		mu_th[i] = 5 * math.Log10(((1+zcmb[i])*c/(10*H))*integrate.Trapezoidal(xs, ys))
+	}
+
+	for i := 0; i < N; i++ {
+		mu_diff[i] = mu_exp[i] - mu_th[i]
+	}
+
+	// reads the FITS files and builds C_eta
+
+	c_eta := mat.NewDense(2220, 2220, nil)
+	c_eta_temp := mat.NewDense(2220, 2220, nil)
+
+	c_eta_temp = newDenseFrom("./covmat/C_bias.fits")
+	c_eta.Add(c_eta, c_eta_temp)
+
+	c_eta_temp = newDenseFrom("./covmat/C_cal.fits")
+	c_eta.Add(c_eta, c_eta_temp)
+
+	c_eta_temp = newDenseFrom("./covmat/C_dust.fits")
+	c_eta.Add(c_eta, c_eta_temp)
+
+	c_eta_temp = newDenseFrom("./covmat/C_host.fits")
+	c_eta.Add(c_eta, c_eta_temp)
+
+	c_eta_temp = newDenseFrom("./covmat/C_model.fits")
+	c_eta.Add(c_eta, c_eta_temp)
+
+	c_eta_temp = newDenseFrom("./covmat/C_nonia.fits")
+	c_eta.Add(c_eta, c_eta_temp)
+
+	c_eta_temp = newDenseFrom("./covmat/C_pecvel.fits")
+	c_eta.Add(c_eta, c_eta_temp)
+
+	c_eta_temp = newDenseFrom("./covmat/C_stat.fits")
+	c_eta.Add(c_eta, c_eta_temp)
+
+	// computes the A^t C_eta A part of the covariance matrix
+	a_vector := mat.NewVecDense(3, []float64{1, ps[1], -ps[2]})
+
+	c_mat_elements := make([]float64, N*N)
+	i, j := 0, 0
+	for k := 0; k < N*N; k++ {
+		submat := c_eta.Slice(i, i+3, j, j+3)
+		element := mat.Inner(a_vector, submat, a_vector)
+		c_mat_elements[k] = element
+		if i+3 < N*3-1 {
+			i = i + 3
+		} else {
+			j = j + 3
+			i = 0
+		}
+	}
+
+	c_mat := mat.NewDense(N, N, c_mat_elements)
+
+	// builds the covariance matrix by addind the diagonal matrices
+
+	data, err := ioutil.ReadFile("./covmat/sigma_mu.txt")
+	if err != nil {
+		log.Fatal(err)
+	}
+	str2 := strings.Trim(string(data), " \n")
+	elements := strings.Split(str2, "\n")
+	elements = append(elements[:0], elements[4:]...)
+
+	sigma_mat := mat.NewDense(N, N, nil)
+	for i := 0; i < N; i++ {
+		var (
+			words = strings.Split(elements[i], " ")
+			sz    = atof(words[4])
+			slen  = atof(words[2])
+			scoh  = atof(words[0])
+			val   = ((5*150000)/(sz*c))*((5*150000)/(sz*c)) + slen*slen + scoh*scoh
+		)
+		sigma_mat.Set(i, i, val)
+	}
+
+	covmat := mat.NewDense(N, N, nil)
+	covmat.Add(c_mat, sigma_mat)
+
+	// builds the vector mu_hat - mu_lambdaCDM
+
+	mu_vector := mat.NewVecDense(len(mu_diff), mu_diff)
+
+	// inverses the matrix C using a Cholesky decomposition
+
+	rows, cols := covmat.Dims()
+	if rows != cols {
+		log.Fatalf("cov-matrix not square")
+	}
+	inv := mat.NewSymDense(rows, nil)
+	for i := 0; i < rows; i++ {
+		for j := i; j < rows; j++ {
+			inv.SetSym(i, j, covmat.At(i, j))
+		}
+	}
+	var chol mat.Cholesky
+	if ok := chol.Factorize(inv); !ok {
+		log.Fatalf("cov-matrix not positive semi-definite")
+	}
+
+	err2 := chol.InverseTo(inv)
+	if err2 != nil {
+		log.Fatal(err2)
+	}
+
+	// returns the final chi2
+
+	return mat.Inner(mu_vector, inv, mu_vector)
+}
+
 // difference computes the differences between two slices, value by value
 func difference(s1, s2 []float64) ([]float64, []float64) {
 
@@ -321,197 +516,6 @@ func newHistogram(s []float64) *plot.Plot {
 	p.Add(h)
 
 	return p
-}
-
-// Chi2 is the test function for a chi2 computation that takes into account the covariance matrix
-func Chi2(ps []float64) float64 {
-
-	// reads the raw datas and format it into a slice of strings, each containing the information for a SN
-
-	datas, err := ioutil.ReadFile("./data/jla_lcparams.txt")
-	if err != nil {
-		fmt.Println(err)
-	}
-	str := strings.Trim(string(datas), "\n")               // gets rid, if needed, of a new line symbol at the end of the file
-	supernovae := strings.Split(str, "\n")                 // builds a slice with data for a SN in each item
-	supernovae = append(supernovae[:0], supernovae[1:]...) // suppress the first item (labels of the columns)
-
-	// creates slices with the needed values from JLA datas
-
-	var (
-		N       = len(supernovae)
-		zcmb    = make([]float64, N) // redshift in the cmb frame
-		mb      = make([]float64, N) // b band peak magnitude
-		stretch = make([]float64, N) // stretch factor
-		colour  = make([]float64, N) // colour factor
-		m_stell = make([]float64, N) // log10 of the host galaxy stellar mass
-	)
-
-	for i, v := range supernovae {
-		split_str := strings.Split(v, " ")
-		if len(split_str) != 21 {
-			os.Exit(1)
-		}
-
-		zcmb[i] = atof(split_str[1])
-		mb[i] = atof(split_str[4])
-		stretch[i] = atof(split_str[6])
-		colour[i] = atof(split_str[8])
-		m_stell[i] = atof(split_str[10])
-	}
-
-	// creats slices for theoretical and experimental mus and the associated errors
-
-	var (
-		mu_exp  = make([]float64, N)
-		mu_th   = make([]float64, N)
-		mu_diff = make([]float64, N)
-	)
-
-	for i := 0; i < N; i++ {
-		if m_stell[i] < 10 {
-			mu_exp[i] = mb[i] - ps[3] + ps[1]*stretch[i] - ps[2]*colour[i]
-		} else {
-			mu_exp[i] = mb[i] - ps[3] - ps[4] + ps[1]*stretch[i] - ps[2]*colour[i]
-		}
-	}
-
-	var n int = 1000
-	for i := 0; i < N; i++ {
-		xs := make([]float64, n+1)
-		ys := make([]float64, n+1)
-
-		for k := range xs {
-			xs[k] = zcmb[i] * float64(k) / float64(n)
-			ys[k] = 1 / math.Sqrt((1+xs[k]*ps[0])*(1+xs[k])*(1+xs[k])-(1-ps[0])*(2+xs[k])*xs[k])
-		}
-
-		mu_th[i] = 5 * math.Log10(((1+zcmb[i])*c/(10*H))*integrate.Trapezoidal(xs, ys))
-	}
-
-	for i := 0; i < N; i++ {
-		mu_diff[i] = mu_exp[i] - mu_th[i]
-	}
-
-	// reads the FITS files and builds C_eta
-
-	c_eta := mat.NewDense(2220, 2220, nil)
-	c_eta_temp := mat.NewDense(2220, 2220, nil)
-
-	c_eta_temp = newDenseFrom("./covmat/C_bias.fits")
-	c_eta.Add(c_eta, c_eta_temp)
-
-	c_eta_temp = newDenseFrom("./covmat/C_cal.fits")
-	c_eta.Add(c_eta, c_eta_temp)
-
-	c_eta_temp = newDenseFrom("./covmat/C_dust.fits")
-	c_eta.Add(c_eta, c_eta_temp)
-
-	c_eta_temp = newDenseFrom("./covmat/C_host.fits")
-	c_eta.Add(c_eta, c_eta_temp)
-
-	c_eta_temp = newDenseFrom("./covmat/C_model.fits")
-	c_eta.Add(c_eta, c_eta_temp)
-
-	c_eta_temp = newDenseFrom("./covmat/C_nonia.fits")
-	c_eta.Add(c_eta, c_eta_temp)
-
-	c_eta_temp = newDenseFrom("./covmat/C_pecvel.fits")
-	c_eta.Add(c_eta, c_eta_temp)
-
-	c_eta_temp = newDenseFrom("./covmat/C_stat.fits")
-	c_eta.Add(c_eta, c_eta_temp)
-
-	// computes the A^t C_eta A part of the covariance matrix
-	a_vector := mat.NewVecDense(3, []float64{1, ps[1], -ps[2]})
-
-	c_mat_elements := make([]float64, N*N)
-	i, j := 0, 0
-	for k := 0; k < N*N; k++ {
-		submat := c_eta.Slice(i, i+3, j, j+3)
-		element := mat.Inner(a_vector, submat, a_vector)
-		c_mat_elements[k] = element
-		if i+3 < N*3-1 {
-			i = i + 3
-		} else {
-			j = j + 3
-			i = 0
-		}
-	}
-
-	c_mat := mat.NewDense(N, N, c_mat_elements)
-
-	// builds the covariance matrix by addind the diagonal matrices
-
-	data, err := ioutil.ReadFile("./covmat/sigma_mu.txt")
-	if err != nil {
-		fmt.Println(err)
-	}
-	str2 := strings.Trim(string(data), " \n")
-	elements := strings.Split(str2, "\n")
-	elements = append(elements[:0], elements[4:]...)
-
-	sigma_mat := mat.NewDense(N, N, nil)
-	for i := 0; i < N; i++ {
-		words := strings.Split(elements[i], " ")
-		sz, slen, scoh := atof(words[4]), atof(words[2]), atof(words[0])
-		val := ((5*150000)/(sz*c))*((5*150000)/(sz*c)) + slen*slen + scoh*scoh
-		sigma_mat.Set(i, i, val)
-	}
-
-	covmat := mat.NewDense(N, N, nil)
-	covmat.Add(c_mat, sigma_mat)
-
-	// builds the vector mu_hat - mu_lambdaCDM
-
-	mu_vector := mat.NewVecDense(len(mu_diff), mu_diff)
-
-	// inverses the matrix C using a Cholesky decomposition
-
-	rows, cols := covmat.Dims()
-	if rows != cols {
-		log.Fatalf("cov-matrix not square")
-	}
-	inv := mat.NewSymDense(rows, nil)
-	for i := 0; i < rows; i++ {
-		for j := i; j < rows; j++ {
-			inv.SetSym(i, j, covmat.At(i, j))
-		}
-	}
-	var chol mat.Cholesky
-	if ok := chol.Factorize(inv); !ok {
-		log.Fatalf("cov-matrix not positive semi-definite")
-	}
-
-	err2 := chol.InverseTo(inv)
-	if err2 != nil {
-		log.Fatal(err2)
-	}
-
-	// returns the final chi2
-
-	return mat.Inner(mu_vector, inv, mu_vector)
-}
-
-// test function for the computaion of chi2
-func FitChi2(f func(ps []float64) float64, ps []float64, settings *optimize.Settings, m optimize.Method) (*optimize.Result, error) {
-	grad := func(grad, ps []float64) {
-		fd.Gradient(grad, f, ps, nil)
-	}
-
-	if m == nil {
-		m = &optimize.NelderMead{}
-	}
-
-	p0 := make([]float64, len(ps))
-	copy(p0, ps)
-
-	p := optimize.Problem{
-		Func: f,
-		Grad: grad,
-	}
-
-	return optimize.Local(p, p0, settings, m)
 }
 
 // reads a FITS fil, extracts the data and convert them into the corresponding matrix
