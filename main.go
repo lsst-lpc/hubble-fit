@@ -37,13 +37,13 @@ Constants
 */
 
 const (
-	c       = 299792458	// speed of light
-	H       = 0.070		// Hubble constant
-	omgM    = 0.295		// Mass density parameter, = (8*pi*G*rho_mass)/(3*H²)
-	alpha   = 0.141		// free parameter for the Hubble fit (factor for stretch)
-	beta    = 3.101		// free parameter for the Hubble fit (factor for color)
-	Mb      = -19.05	// absolute blue magnitude of a 1A SN
-	delta_M = -0.070	// uncertainty on the absolute blue magnitude
+	c       = 299792458 // speed of light
+	H       = 0.070     // Hubble constant
+	omgM    = 0.295     // Mass density parameter, = (8*pi*G*rho_mass)/(3*H²)
+	alpha   = 0.141     // free parameter for the Hubble fit (factor for stretch)
+	beta    = 3.101     // free parameter for the Hubble fit (factor for color)
+	Mb      = -19.05    // absolute blue magnitude of a 1A SN
+	delta_M = -0.070    // uncertainty on the absolute blue magnitude
 )
 
 /*
@@ -61,7 +61,7 @@ func difference(s1, s2 []float64) ([]float64, []float64) {
 	diff := make([]float64, len(s1))
 	abs := make([]float64, len(s1))
 
-	for i := range(s1) {
+	for i := range s1 {
 		val := s2[i] - s1[i]
 		diff[i] = val
 		abs[i] = math.Abs(val)
@@ -71,7 +71,7 @@ func difference(s1, s2 []float64) ([]float64, []float64) {
 }
 
 // convert a string to float64
-func AtoF (s string) float64 {
+func AtoF(s string) float64 {
 
 	// input : s : string
 
@@ -161,16 +161,15 @@ func mu_exp_err(dmb, dstretch, dcolour []float64) []float64 {
 	// inputs : dmb, dstretch, dcolour = errors on mb, stretch and colour from JLA data
 
 	slice := make([]float64, len(dmb))
-	for i := range(dmb) {
+	for i := range dmb {
 		ai := dmb[i]
-		bi := alpha*dstretch[i]
-		ci := beta*dcolour[i]
+		bi := alpha * dstretch[i]
+		ci := beta * dcolour[i]
 		slice[i] = math.Sqrt(ai*ai + bi*bi + ci*ci)
 	}
 
 	return slice
 }
-
 
 /*
 ######
@@ -232,7 +231,7 @@ func modified_integral(z, omega float64) float64 {
 	xs := make([]float64, n+1)
 	ys := make([]float64, n+1)
 
-	for i := range(xs) {
+	for i := range xs {
 		x := z * float64(i) / float64(n)
 		xs[i] = x
 		ys[i] = 1 / math.Sqrt((1+x*omega)*(1+x)*(1+x)-(1-omega)*(2+x)*x)
@@ -281,18 +280,18 @@ func Chi2(ps []float64) float64 {
 	if err != nil {
 		fmt.Println(err)
 	}
-	str := strings.Trim(string(datas), "\n")		// gets rid, if needed, of a new line symbol at the end of the file
-	supernovae := strings.Split(str, "\n")			// builds a slice with data for a SN in each item
-	supernovae = append(supernovae[:0], supernovae[1:]...)	// suppress the first item (labels of the columns)
+	str := strings.Trim(string(datas), "\n")               // gets rid, if needed, of a new line symbol at the end of the file
+	supernovae := strings.Split(str, "\n")                 // builds a slice with data for a SN in each item
+	supernovae = append(supernovae[:0], supernovae[1:]...) // suppress the first item (labels of the columns)
 
 	// creates slices with the needed values from JLA datas
 
 	N := len(supernovae)
-	zcmb := make([]float64, N)	// redshift in the cmb frame
-	mb := make([]float64, N)	// b band peak magnitude
-	stretch := make([]float64, N)	// stretch factor
-	colour := make([]float64, N)	// colour factor
-	m_stell := make([]float64, N)	// log10 of the host galaxy stellar mass
+	zcmb := make([]float64, N)    // redshift in the cmb frame
+	mb := make([]float64, N)      // b band peak magnitude
+	stretch := make([]float64, N) // stretch factor
+	colour := make([]float64, N)  // colour factor
+	m_stell := make([]float64, N) // log10 of the host galaxy stellar mass
 
 	for i, v := range supernovae {
 		split_str := strings.Split(v, " ")
@@ -300,7 +299,7 @@ func Chi2(ps []float64) float64 {
 			os.Exit(1)
 		}
 
-		zcmb[i]	= AtoF(split_str[1])
+		zcmb[i] = AtoF(split_str[1])
 		mb[i] = AtoF(split_str[4])
 		stretch[i] = AtoF(split_str[6])
 		colour[i] = AtoF(split_str[8])
@@ -332,7 +331,7 @@ func Chi2(ps []float64) float64 {
 			ord[k] = 1 / math.Sqrt((1+abs[k]*ps[0])*(1+abs[k])*(1+abs[k])-(1-ps[0])*(2+abs[k])*abs[k])
 		}
 
-		mu_th[i] = 5 * math.Log10(((1+zcmb[i])*c/(10*H))*integrate.Trapezoidal(abs,ord))
+		mu_th[i] = 5 * math.Log10(((1+zcmb[i])*c/(10*H))*integrate.Trapezoidal(abs, ord))
 	}
 
 	for i := 0; i < N; i++ {
@@ -378,9 +377,9 @@ func Chi2(ps []float64) float64 {
 		element := mat64.Inner(a_vector, submat, a_vector)
 		c_mat_elements[k] = element
 		if i+3 < N*3-1 {
-			i = i+3
+			i = i + 3
 		} else {
-			j = j+3
+			j = j + 3
 			i = 0
 		}
 	}
@@ -398,7 +397,7 @@ func Chi2(ps []float64) float64 {
 	elements = append(elements[:0], elements[4:]...)
 
 	sigma_mat := mat64.NewDense(N, N, nil)
-	for i :=0; i<N; i++ {
+	for i := 0; i < N; i++ {
 		words := strings.Split(elements[i], " ")
 		sz, slen, scoh := AtoF(words[4]), AtoF(words[2]), AtoF(words[0])
 		val := ((5*150000)/(sz*c))*((5*150000)/(sz*c)) + slen*slen + scoh*scoh
@@ -420,7 +419,7 @@ func Chi2(ps []float64) float64 {
 	}
 	inv := mat64.NewSymDense(rows, nil)
 	for i := 0; i < rows; i++ {
-		for j := i; j< rows; j++ {
+		for j := i; j < rows; j++ {
 			inv.SetSym(i, j, covmat.At(i, j))
 		}
 	}
@@ -460,10 +459,8 @@ func FitChi2(f func(ps []float64) float64, ps []float64, settings *optimize.Sett
 	return optimize.Local(p, p0, settings, m)
 }
 
-
-
 // reads a FITS fil, extracts the data and convert them into the corresponding matrix
-func matrice (file string) *mat64.Dense {
+func matrice(file string) *mat64.Dense {
 
 	r, err := os.Open(file)
 	if err != nil {
@@ -490,7 +487,6 @@ func matrice (file string) *mat64.Dense {
 	return Mat
 }
 
-
 /*
 ######
 Main function
@@ -504,26 +500,26 @@ func main() {
 	if err != nil {
 		fmt.Println(err)
 	}
-	str := strings.Trim(string(datas), "\n")		// gets rid, if needed, of a new line symbol at the end of the file
-	supernovae := strings.Split(str, "\n")			// builds a slice with data for a SN in each item
-	supernovae = append(supernovae[:0], supernovae[1:]...)	// suppress the first item (labels of the columns)
+	str := strings.Trim(string(datas), "\n")               // gets rid, if needed, of a new line symbol at the end of the file
+	supernovae := strings.Split(str, "\n")                 // builds a slice with data for a SN in each item
+	supernovae = append(supernovae[:0], supernovae[1:]...) // suppress the first item (labels of the columns)
 
 	// creates slices with the needed values from JLA datas
 
 	N := len(supernovae)
-	sn_names := make([]string, N)	// names
-	zcmb := make([]float64, N)	// redshift in the cmb frame
-	zhel := make([]float64, N)	// redshift in the heliocentric frame
-	mb := make([]float64, N)	// b band peak magnitude
-	dmb := make([]float64, N)	// b band peak magnitude error
-	stretch := make([]float64, N)	// stretch factor
-	dstretch := make([]float64, N)	// stretch factor error
-	colour := make([]float64, N)	// colour factor
-	dcolour := make([]float64, N)	// colour factor error
-	m_stell := make([]float64, N)	// log10 of the host galaxy stellar mass
-	exp := make([]float64, N)	// supernova sample identifier : 1 = SNLS, 2 = SDSS, 3 = lowz, 4 = Riess HST
-	ra_jla := make([]float64, N)	// right ascension (in degrees)
-	de_jla := make([]float64, N)	// declination (in degrees)
+	sn_names := make([]string, N)  // names
+	zcmb := make([]float64, N)     // redshift in the cmb frame
+	zhel := make([]float64, N)     // redshift in the heliocentric frame
+	mb := make([]float64, N)       // b band peak magnitude
+	dmb := make([]float64, N)      // b band peak magnitude error
+	stretch := make([]float64, N)  // stretch factor
+	dstretch := make([]float64, N) // stretch factor error
+	colour := make([]float64, N)   // colour factor
+	dcolour := make([]float64, N)  // colour factor error
+	m_stell := make([]float64, N)  // log10 of the host galaxy stellar mass
+	exp := make([]float64, N)      // supernova sample identifier : 1 = SNLS, 2 = SDSS, 3 = lowz, 4 = Riess HST
+	ra_jla := make([]float64, N)   // right ascension (in degrees)
+	de_jla := make([]float64, N)   // declination (in degrees)
 
 	for i, v := range supernovae {
 		split_str := strings.Split(v, " ")
@@ -532,7 +528,7 @@ func main() {
 		}
 
 		sn_names[i] = split_str[0]
-		zcmb[i]	= AtoF(split_str[1])
+		zcmb[i] = AtoF(split_str[1])
 		zhel[i] = AtoF(split_str[2])
 		mb[i] = AtoF(split_str[4])
 		dmb[i] = AtoF(split_str[5])
@@ -550,12 +546,12 @@ func main() {
 
 	// compute and store slices needed for the plots and analysis
 
-	muexp_data := mu_exp_slice(m_stell, mb, stretch, colour)	// experimental mus from SALT2 model
-	muth_data := mu_th_slice(zcmb, 10000)				// theoretical mus from lambdaCDM model
-	diff_data, abs_diff_data := difference(muth_data, muexp_data)	// difference and absolute difference between exp and theoretical mus
-	mean_residuals := stat.Mean(diff_data, nil)			// mean of the differences
-	abs_mean_residuals := stat.Mean(abs_diff_data, nil)		// mean of the absolute differences
-//	muexp_error := mu_exp_err(dmb, dstretch, dcolour)		// errors on mu_exp, from error propagation in SALT2 model
+	muexp_data := mu_exp_slice(m_stell, mb, stretch, colour)      // experimental mus from SALT2 model
+	muth_data := mu_th_slice(zcmb, 10000)                         // theoretical mus from lambdaCDM model
+	diff_data, abs_diff_data := difference(muth_data, muexp_data) // difference and absolute difference between exp and theoretical mus
+	mean_residuals := stat.Mean(diff_data, nil)                   // mean of the differences
+	abs_mean_residuals := stat.Mean(abs_diff_data, nil)           // mean of the absolute differences
+	//	muexp_error := mu_exp_err(dmb, dstretch, dcolour)		// errors on mu_exp, from error propagation in SALT2 model
 
 	fmt.Println("mean of the residuals ", mean_residuals)
 	fmt.Println("mean of the absolute residuals ", abs_mean_residuals)
@@ -583,6 +579,8 @@ func main() {
 	//computes the best values for the five parameters by minimizing chi2
 
 	res, err := FitChi2(Chi2, []float64{0.295, 0.141, 3.101, -19.05, -0.70}, nil, nil)
-	if err != nil { panic(err) }
-	fmt.Printf("res=%v\n",res)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Printf("res=%v\n", res)
 }
