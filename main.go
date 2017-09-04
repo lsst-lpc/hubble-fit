@@ -30,12 +30,6 @@ import (
 	"gonum.org/v1/plot/vg/draw"
 )
 
-/*
-#####
-Constants
-#####
-*/
-
 const (
 	c       = 299792458 // speed of light
 	H       = 0.070     // Hubble constant
@@ -46,13 +40,101 @@ const (
 	delta_M = -0.070    // uncertainty on the absolute blue magnitude
 )
 
-/*
-#####
-Miscellaneous functions
-#####
-*/
+func main() {
 
-// compute the differences between two slices, value by value
+	// reads the raw datas and format it into a slice of strings, each containing the information for a SN
+	datas, err := ioutil.ReadFile("./data/jla_lcparams.txt")
+	if err != nil {
+		fmt.Println(err)
+	}
+	str := strings.Trim(string(datas), "\n")               // gets rid, if needed, of a new line symbol at the end of the file
+	supernovae := strings.Split(str, "\n")                 // builds a slice with data for a SN in each item
+	supernovae = append(supernovae[:0], supernovae[1:]...) // suppress the first item (labels of the columns)
+
+	// creates slices with the needed values from JLA datas
+
+	var (
+		N        = len(supernovae)
+		sn_names = make([]string, N)  // names
+		zcmb     = make([]float64, N) // redshift in the cmb frame
+		zhel     = make([]float64, N) // redshift in the heliocentric frame
+		mb       = make([]float64, N) // b band peak magnitude
+		dmb      = make([]float64, N) // b band peak magnitude error
+		stretch  = make([]float64, N) // stretch factor
+		dstretch = make([]float64, N) // stretch factor error
+		colour   = make([]float64, N) // colour factor
+		dcolour  = make([]float64, N) // colour factor error
+		m_stell  = make([]float64, N) // log10 of the host galaxy stellar mass
+		exp      = make([]float64, N) // supernova sample identifier : 1 = SNLS, 2 = SDSS, 3 = lowz, 4 = Riess HST
+		ra_jla   = make([]float64, N) // right ascension (in degrees)
+		de_jla   = make([]float64, N) // declination (in degrees)
+	)
+
+	for i, v := range supernovae {
+		split_str := strings.Split(v, " ")
+		if len(split_str) != 21 {
+			os.Exit(1)
+		}
+
+		sn_names[i] = split_str[0]
+		zcmb[i] = atof(split_str[1])
+		zhel[i] = atof(split_str[2])
+		mb[i] = atof(split_str[4])
+		dmb[i] = atof(split_str[5])
+		stretch[i] = atof(split_str[6])
+		dstretch[i] = atof(split_str[7])
+		colour[i] = atof(split_str[8])
+		dcolour[i] = atof(split_str[9])
+		m_stell[i] = atof(split_str[10])
+		exp[i] = atof(split_str[17])
+		ra_jla[i] = atof(split_str[18])
+		de_jla[i] = atof(split_str[19])
+	}
+
+	fmt.Println("Number of supernovae : ", len(sn_names))
+
+	// compute and store slices needed for the plots and analysis
+
+	muexp_data := mu_exp_slice(m_stell, mb, stretch, colour)      // experimental mus from SALT2 model
+	muth_data := mu_th_slice(zcmb, 10000)                         // theoretical mus from lambdaCDM model
+	diff_data, abs_diff_data := difference(muth_data, muexp_data) // difference and absolute difference between exp and theoretical mus
+	mean_residuals := stat.Mean(diff_data, nil)                   // mean of the differences
+	abs_mean_residuals := stat.Mean(abs_diff_data, nil)           // mean of the absolute differences
+	//	muexp_error := mu_exp_err(dmb, dstretch, dcolour)		// errors on mu_exp, from error propagation in SALT2 model
+
+	fmt.Println("mean of the residuals ", mean_residuals)
+	fmt.Println("mean of the absolute residuals ", abs_mean_residuals)
+
+	// compute, draw and store the various diagrams
+
+	hubblePlot := newHubblePlot(newPoints(zcmb, muexp_data))
+	err = hubblePlot.Save(1080, 720, "hubble_diagram.png")
+	if err != nil {
+		log.Fatalf("Error saving 'hubble_diagram.png' : %v", err)
+	}
+
+	hubblePlot2 := newHubblePlot(newPoints(zcmb, diff_data))
+	err = hubblePlot2.Save(720, 200, "hubble_diagram2.png")
+	if err != nil {
+		log.Fatalf("Error saving 'hubble_diagram2.png' : %v", err)
+	}
+
+	histogram := newHistogram(diff_data)
+	err = histogram.Save(500, 500, "histogram.png")
+	if err != nil {
+		log.Fatalf("Error saving 'histogram.png' : %v", err)
+	}
+
+	//computes the best values for the five parameters by minimizing chi2
+
+	res, err := FitChi2(Chi2, []float64{0.295, 0.141, 3.101, -19.05, -0.70}, nil, nil)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Printf("res=%v\n", res)
+}
+
+// difference computes the differences between two slices, value by value
 func difference(s1, s2 []float64) ([]float64, []float64) {
 
 	// input : s1, s2 : two slices
@@ -70,10 +152,8 @@ func difference(s1, s2 []float64) ([]float64, []float64) {
 	return diff, abs
 }
 
-// convert a string to float64
-func AtoF(s string) float64 {
-
-	// input : s : string
+// atof converts a string to float64
+func atof(s string) float64 {
 
 	a := strings.Trim(s, " ")
 	v, err := strconv.ParseFloat(a, 64)
@@ -83,13 +163,7 @@ func AtoF(s string) float64 {
 	return v
 }
 
-/*
-#####
-Theoretical mu
-#####
-*/
-
-// compute the integral of the D_l function, based on the trapeze method
+// integral computes the integral of the D_l function, based on the trapeze method
 func integral(z, n float64) float64 {
 
 	// integrate.Trapezoidal takes two slices (abscissa and ordinate) from which to compute the integral
@@ -110,35 +184,25 @@ func integral(z, n float64) float64 {
 
 }
 
-// compute the theoretical mu for each SN
+// mu_th computes the theoretical mu for each supernova.
+// z is the redshift.
+// n is the number of steps for the integral.
 func mu_th(z, n float64) float64 {
-
-	// inputs : z = redshift, n = number of steps for the integral, to be passed to integral function
-
 	return 5 * math.Log10(((1+z)*c/(10*H))*integral(z, n))
 }
 
-// builds a slice containing the theoretical distances
+// mu_th_slice builds a slice containing the theoretical distances.
+// s is a slice of the zcmb.
+// n is the number of steps for the integral.
 func mu_th_slice(s []float64, n float64) []float64 {
-
-	// inputs : s = slice of the zcmb, n = number of steps for the integral, to be passed to the integral function through mu_th
-
 	diag_ord := make([]float64, len(s))
-
 	for i := range s {
 		diag_ord[i] = mu_th(s[i], n)
 	}
-
 	return diag_ord
 }
 
-/*
-######
-Experimental mu
-######
-*/
-
-// compute experimental mus and add them in an array
+// mu_exp_slice computes the experimental mus and add them in an array.
 func mu_exp_slice(m_stell, mb, stretch, colour []float64) []float64 {
 
 	// inputs : mB = B band peak magnitude, stretch and colour = SALT2 parameters
@@ -155,7 +219,7 @@ func mu_exp_slice(m_stell, mb, stretch, colour []float64) []float64 {
 	return slice
 }
 
-// compute errors on experimental mus and add them in an array
+// mu_exp_err computes the errors on experimental mus and add them in an array
 func mu_exp_err(dmb, dstretch, dcolour []float64) []float64 {
 
 	// inputs : dmb, dstretch, dcolour = errors on mb, stretch and colour from JLA data
@@ -171,13 +235,7 @@ func mu_exp_err(dmb, dstretch, dcolour []float64) []float64 {
 	return slice
 }
 
-/*
-######
-Functions for diagrams : plots, fit, etc
-######
-*/
-
-// creates a plotter.XYs (cloud of points) from given 2D coordinates
+// newPoints creates a plotter.XYs (cloud of points) from given 2D coordinates
 func newPoints(xs, ys []float64) plotter.XYs {
 
 	// inputs : xs, ys = slices containing the x and y values respectively
@@ -191,7 +249,7 @@ func newPoints(xs, ys []float64) plotter.XYs {
 	return pts
 }
 
-// plos the given points
+// newHubblePlot plots the given points
 func newHubblePlot(points plotter.XYs) *plot.Plot {
 
 	// input : points = plotter.XYs created by the points function
@@ -265,13 +323,7 @@ func newHistogram(s []float64) *plot.Plot {
 	return p
 }
 
-/*
-######
-Matrices and chi2
-######
-*/
-
-// test function for a chi2 computation that takes into account the covariance matrix
+// Chi2 is the test function for a chi2 computation that takes into account the covariance matrix
 func Chi2(ps []float64) float64 {
 
 	// reads the raw datas and format it into a slice of strings, each containing the information for a SN
@@ -286,12 +338,14 @@ func Chi2(ps []float64) float64 {
 
 	// creates slices with the needed values from JLA datas
 
-	N := len(supernovae)
-	zcmb := make([]float64, N)    // redshift in the cmb frame
-	mb := make([]float64, N)      // b band peak magnitude
-	stretch := make([]float64, N) // stretch factor
-	colour := make([]float64, N)  // colour factor
-	m_stell := make([]float64, N) // log10 of the host galaxy stellar mass
+	var (
+		N       = len(supernovae)
+		zcmb    = make([]float64, N) // redshift in the cmb frame
+		mb      = make([]float64, N) // b band peak magnitude
+		stretch = make([]float64, N) // stretch factor
+		colour  = make([]float64, N) // colour factor
+		m_stell = make([]float64, N) // log10 of the host galaxy stellar mass
+	)
 
 	for i, v := range supernovae {
 		split_str := strings.Split(v, " ")
@@ -299,16 +353,20 @@ func Chi2(ps []float64) float64 {
 			os.Exit(1)
 		}
 
-		zcmb[i] = AtoF(split_str[1])
-		mb[i] = AtoF(split_str[4])
-		stretch[i] = AtoF(split_str[6])
-		colour[i] = AtoF(split_str[8])
-		m_stell[i] = AtoF(split_str[10])
+		zcmb[i] = atof(split_str[1])
+		mb[i] = atof(split_str[4])
+		stretch[i] = atof(split_str[6])
+		colour[i] = atof(split_str[8])
+		m_stell[i] = atof(split_str[10])
 	}
 
 	// creats slices for theoretical and experimental mus and the associated errors
 
-	mu_exp, mu_th, mu_diff := make([]float64, N), make([]float64, N), make([]float64, N)
+	var (
+		mu_exp  = make([]float64, N)
+		mu_th   = make([]float64, N)
+		mu_diff = make([]float64, N)
+	)
 
 	for i := 0; i < N; i++ {
 		if m_stell[i] < 10 {
@@ -320,18 +378,15 @@ func Chi2(ps []float64) float64 {
 
 	var n int = 1000
 	for i := 0; i < N; i++ {
-		abs := make([]float64, n+1)
-		ord := make([]float64, n+1)
+		xs := make([]float64, n+1)
+		ys := make([]float64, n+1)
 
-		for j := 0; j <= n; j++ {
-			abs[j] = zcmb[i] * float64(j) / float64(n)
+		for k := range xs {
+			xs[k] = zcmb[i] * float64(k) / float64(n)
+			ys[k] = 1 / math.Sqrt((1+xs[k]*ps[0])*(1+xs[k])*(1+xs[k])-(1-ps[0])*(2+xs[k])*xs[k])
 		}
 
-		for k := 0; k <= n; k++ {
-			ord[k] = 1 / math.Sqrt((1+abs[k]*ps[0])*(1+abs[k])*(1+abs[k])-(1-ps[0])*(2+abs[k])*abs[k])
-		}
-
-		mu_th[i] = 5 * math.Log10(((1+zcmb[i])*c/(10*H))*integrate.Trapezoidal(abs, ord))
+		mu_th[i] = 5 * math.Log10(((1+zcmb[i])*c/(10*H))*integrate.Trapezoidal(xs, ys))
 	}
 
 	for i := 0; i < N; i++ {
@@ -343,28 +398,28 @@ func Chi2(ps []float64) float64 {
 	c_eta := mat.NewDense(2220, 2220, nil)
 	c_eta_temp := mat.NewDense(2220, 2220, nil)
 
-	c_eta_temp = matrice("./covmat/C_bias.fits")
+	c_eta_temp = newDenseFrom("./covmat/C_bias.fits")
 	c_eta.Add(c_eta, c_eta_temp)
 
-	c_eta_temp = matrice("./covmat/C_cal.fits")
+	c_eta_temp = newDenseFrom("./covmat/C_cal.fits")
 	c_eta.Add(c_eta, c_eta_temp)
 
-	c_eta_temp = matrice("./covmat/C_dust.fits")
+	c_eta_temp = newDenseFrom("./covmat/C_dust.fits")
 	c_eta.Add(c_eta, c_eta_temp)
 
-	c_eta_temp = matrice("./covmat/C_host.fits")
+	c_eta_temp = newDenseFrom("./covmat/C_host.fits")
 	c_eta.Add(c_eta, c_eta_temp)
 
-	c_eta_temp = matrice("./covmat/C_model.fits")
+	c_eta_temp = newDenseFrom("./covmat/C_model.fits")
 	c_eta.Add(c_eta, c_eta_temp)
 
-	c_eta_temp = matrice("./covmat/C_nonia.fits")
+	c_eta_temp = newDenseFrom("./covmat/C_nonia.fits")
 	c_eta.Add(c_eta, c_eta_temp)
 
-	c_eta_temp = matrice("./covmat/C_pecvel.fits")
+	c_eta_temp = newDenseFrom("./covmat/C_pecvel.fits")
 	c_eta.Add(c_eta, c_eta_temp)
 
-	c_eta_temp = matrice("./covmat/C_stat.fits")
+	c_eta_temp = newDenseFrom("./covmat/C_stat.fits")
 	c_eta.Add(c_eta, c_eta_temp)
 
 	// computes the A^t C_eta A part of the covariance matrix
@@ -399,7 +454,7 @@ func Chi2(ps []float64) float64 {
 	sigma_mat := mat.NewDense(N, N, nil)
 	for i := 0; i < N; i++ {
 		words := strings.Split(elements[i], " ")
-		sz, slen, scoh := AtoF(words[4]), AtoF(words[2]), AtoF(words[0])
+		sz, slen, scoh := atof(words[4]), atof(words[2]), atof(words[0])
 		val := ((5*150000)/(sz*c))*((5*150000)/(sz*c)) + slen*slen + scoh*scoh
 		sigma_mat.Set(i, i, val)
 	}
@@ -460,7 +515,7 @@ func FitChi2(f func(ps []float64) float64, ps []float64, settings *optimize.Sett
 }
 
 // reads a FITS fil, extracts the data and convert them into the corresponding matrix
-func matrice(file string) *mat.Dense {
+func newDenseFrom(file string) *mat.Dense {
 
 	r, err := os.Open(file)
 	if err != nil {
@@ -479,108 +534,12 @@ func matrice(file string) *mat.Dense {
 	hdr := img.Header()
 	rows := hdr.Axes()[0]
 	cols := hdr.Axes()[1]
+
 	raw := make([]float64, rows*cols)
 	err = img.Read(&raw)
-
-	Mat := mat.NewDense(2220, 2220, raw)
-
-	return Mat
-}
-
-/*
-######
-Main function
-######
-*/
-
-func main() {
-
-	// reads the raw datas and format it into a slice of strings, each containing the information for a SN
-	datas, err := ioutil.ReadFile("./data/jla_lcparams.txt")
 	if err != nil {
-		fmt.Println(err)
-	}
-	str := strings.Trim(string(datas), "\n")               // gets rid, if needed, of a new line symbol at the end of the file
-	supernovae := strings.Split(str, "\n")                 // builds a slice with data for a SN in each item
-	supernovae = append(supernovae[:0], supernovae[1:]...) // suppress the first item (labels of the columns)
-
-	// creates slices with the needed values from JLA datas
-
-	N := len(supernovae)
-	sn_names := make([]string, N)  // names
-	zcmb := make([]float64, N)     // redshift in the cmb frame
-	zhel := make([]float64, N)     // redshift in the heliocentric frame
-	mb := make([]float64, N)       // b band peak magnitude
-	dmb := make([]float64, N)      // b band peak magnitude error
-	stretch := make([]float64, N)  // stretch factor
-	dstretch := make([]float64, N) // stretch factor error
-	colour := make([]float64, N)   // colour factor
-	dcolour := make([]float64, N)  // colour factor error
-	m_stell := make([]float64, N)  // log10 of the host galaxy stellar mass
-	exp := make([]float64, N)      // supernova sample identifier : 1 = SNLS, 2 = SDSS, 3 = lowz, 4 = Riess HST
-	ra_jla := make([]float64, N)   // right ascension (in degrees)
-	de_jla := make([]float64, N)   // declination (in degrees)
-
-	for i, v := range supernovae {
-		split_str := strings.Split(v, " ")
-		if len(split_str) != 21 {
-			os.Exit(1)
-		}
-
-		sn_names[i] = split_str[0]
-		zcmb[i] = AtoF(split_str[1])
-		zhel[i] = AtoF(split_str[2])
-		mb[i] = AtoF(split_str[4])
-		dmb[i] = AtoF(split_str[5])
-		stretch[i] = AtoF(split_str[6])
-		dstretch[i] = AtoF(split_str[7])
-		colour[i] = AtoF(split_str[8])
-		dcolour[i] = AtoF(split_str[9])
-		m_stell[i] = AtoF(split_str[10])
-		exp[i] = AtoF(split_str[17])
-		ra_jla[i] = AtoF(split_str[18])
-		de_jla[i] = AtoF(split_str[19])
+		log.Fatal(err)
 	}
 
-	fmt.Println("Number of supernovae : ", len(sn_names))
-
-	// compute and store slices needed for the plots and analysis
-
-	muexp_data := mu_exp_slice(m_stell, mb, stretch, colour)      // experimental mus from SALT2 model
-	muth_data := mu_th_slice(zcmb, 10000)                         // theoretical mus from lambdaCDM model
-	diff_data, abs_diff_data := difference(muth_data, muexp_data) // difference and absolute difference between exp and theoretical mus
-	mean_residuals := stat.Mean(diff_data, nil)                   // mean of the differences
-	abs_mean_residuals := stat.Mean(abs_diff_data, nil)           // mean of the absolute differences
-	//	muexp_error := mu_exp_err(dmb, dstretch, dcolour)		// errors on mu_exp, from error propagation in SALT2 model
-
-	fmt.Println("mean of the residuals ", mean_residuals)
-	fmt.Println("mean of the absolute residuals ", abs_mean_residuals)
-
-	// compute, draw and store the various diagrams
-
-	hubblePlot := newHubblePlot(newPoints(zcmb, muexp_data))
-	err = hubblePlot.Save(1080, 720, "hubble_diagram.png")
-	if err != nil {
-		log.Fatalf("Error saving 'hubble_diagram.png' : %v", err)
-	}
-
-	hubblePlot2 := newHubblePlot(newPoints(zcmb, diff_data))
-	err = hubblePlot2.Save(720, 200, "hubble_diagram2.png")
-	if err != nil {
-		log.Fatalf("Error saving 'hubble_diagram2.png' : %v", err)
-	}
-
-	histogram := newHistogram(diff_data)
-	err = histogram.Save(500, 500, "histogram.png")
-	if err != nil {
-		log.Fatalf("Error saving 'histogram.png' : %v", err)
-	}
-
-	//computes the best values for the five parameters by minimizing chi2
-
-	res, err := FitChi2(Chi2, []float64{0.295, 0.141, 3.101, -19.05, -0.70}, nil, nil)
-	if err != nil {
-		panic(err)
-	}
-	fmt.Printf("res=%v\n", res)
+	return mat.NewDense(2220, 2220, raw)
 }
