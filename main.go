@@ -73,7 +73,7 @@ func main() {
 	for i, v := range supernovae {
 		split_str := strings.Split(v, " ")
 		if len(split_str) != 21 {
-			os.Exit(1)
+			log.Fatalf("invalid number of jla_lcparams fields. got=%d, want=%d", len(split_str), 21)
 		}
 
 		sn_names[i] = split_str[0]
@@ -125,13 +125,18 @@ func main() {
 		log.Fatalf("Error saving 'histogram.png' : %v", err)
 	}
 
-	//computes the best values for the five parameters by minimizing chi2
-
-	res, err := FitChi2(Chi2, []float64{0.295, 0.141, 3.101, -19.05, -0.70}, nil, nil)
+	// computes the best values for the five parameters by minimizing chi2
+	var params = []float64{0.295, 0.141, 3.101, -19.05, -0.070}
+	res, err := FitChi2(Chi2, params, nil, nil)
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
-	fmt.Printf("res=%v\n", res)
+	fmt.Printf("res=%+v\n", res)
+	fmt.Println("Omega M : ", res.X[0])
+	fmt.Println("Alpha : ", res.X[1])
+	fmt.Println("Beta : ", res.X[2])
+	fmt.Println("Mb : ", res.X[3])
+	fmt.Println("Delta M : ", res.X[4])
 }
 
 // FitChi2 is the test function for the computation of chi2
@@ -208,14 +213,14 @@ func Chi2(ps []float64) float64 {
 		}
 	}
 
-	var n int = 1000
 	for i := 0; i < N; i++ {
+		const n = 1000
 		xs := make([]float64, n+1)
 		ys := make([]float64, n+1)
 
-		for k := range xs {
-			xs[k] = zcmb[i] * float64(k) / float64(n)
-			ys[k] = 1 / math.Sqrt((1+xs[k]*ps[0])*(1+xs[k])*(1+xs[k])-(1-ps[0])*(2+xs[k])*xs[k])
+		for j := range xs {
+			xs[j] = zcmb[i] * float64(j) / float64(n)
+			ys[j] = 1 / math.Sqrt((1+xs[j]*ps[0])*(1+xs[j])*(1+xs[j])-(1-ps[0])*(2+xs[j])*xs[j])
 		}
 
 		mu_th[i] = 5 * math.Log10(((1+zcmb[i])*c/(10*H))*integrate.Trapezoidal(xs, ys))
@@ -228,31 +233,14 @@ func Chi2(ps []float64) float64 {
 	// reads the FITS files and builds C_eta
 
 	c_eta := mat.NewDense(2220, 2220, nil)
-	c_eta_temp := mat.NewDense(2220, 2220, nil)
-
-	c_eta_temp = newDenseFrom("./covmat/C_bias.fits")
-	c_eta.Add(c_eta, c_eta_temp)
-
-	c_eta_temp = newDenseFrom("./covmat/C_cal.fits")
-	c_eta.Add(c_eta, c_eta_temp)
-
-	c_eta_temp = newDenseFrom("./covmat/C_dust.fits")
-	c_eta.Add(c_eta, c_eta_temp)
-
-	c_eta_temp = newDenseFrom("./covmat/C_host.fits")
-	c_eta.Add(c_eta, c_eta_temp)
-
-	c_eta_temp = newDenseFrom("./covmat/C_model.fits")
-	c_eta.Add(c_eta, c_eta_temp)
-
-	c_eta_temp = newDenseFrom("./covmat/C_nonia.fits")
-	c_eta.Add(c_eta, c_eta_temp)
-
-	c_eta_temp = newDenseFrom("./covmat/C_pecvel.fits")
-	c_eta.Add(c_eta, c_eta_temp)
-
-	c_eta_temp = newDenseFrom("./covmat/C_stat.fits")
-	c_eta.Add(c_eta, c_eta_temp)
+	c_eta.Add(c_eta, newDenseFrom("./covmat/C_bias.fits"))
+	c_eta.Add(c_eta, newDenseFrom("./covmat/C_cal.fits"))
+	c_eta.Add(c_eta, newDenseFrom("./covmat/C_dust.fits"))
+	c_eta.Add(c_eta, newDenseFrom("./covmat/C_host.fits"))
+	c_eta.Add(c_eta, newDenseFrom("./covmat/C_model.fits"))
+	c_eta.Add(c_eta, newDenseFrom("./covmat/C_nonia.fits"))
+	c_eta.Add(c_eta, newDenseFrom("./covmat/C_pecvel.fits"))
+	c_eta.Add(c_eta, newDenseFrom("./covmat/C_stat.fits"))
 
 	// computes the A^t C_eta A part of the covariance matrix
 	a_vector := mat.NewVecDense(3, []float64{1, ps[1], -ps[2]})
@@ -323,8 +311,6 @@ func Chi2(ps []float64) float64 {
 	if err2 != nil {
 		log.Fatal(err2)
 	}
-
-	// returns the final chi2
 
 	return mat.Inner(mu_vector, inv, mu_vector)
 }
