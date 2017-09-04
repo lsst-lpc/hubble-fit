@@ -20,12 +20,14 @@ import (
 	"github.com/gonum/integrate"
 	"github.com/gonum/matrix/mat64"
 	"github.com/gonum/optimize"
-	"github.com/gonum/plot"
-	"github.com/gonum/plot/plotter"
-	"github.com/gonum/plot/vg"
-	"github.com/gonum/plot/vg/draw"
 	"github.com/gonum/stat"
-//	"go-hep.org/x/hep/fit"
+
+	//	"go-hep.org/x/hep/fit"
+
+	"gonum.org/v1/plot"
+	"gonum.org/v1/plot/plotter"
+	"gonum.org/v1/plot/vg"
+	"gonum.org/v1/plot/vg/draw"
 )
 
 /*
