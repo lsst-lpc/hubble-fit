@@ -16,14 +16,14 @@ import (
 	"strings"
 
 	"github.com/astrogo/fitsio"
-	"github.com/gonum/diff/fd"
-	"github.com/gonum/integrate"
-	"github.com/gonum/matrix/mat64"
-	"github.com/gonum/optimize"
-	"github.com/gonum/stat"
 
 	//	"go-hep.org/x/hep/fit"
 
+	"gonum.org/v1/gonum/diff/fd"
+	"gonum.org/v1/gonum/integrate"
+	"gonum.org/v1/gonum/mat"
+	"gonum.org/v1/gonum/optimize"
+	"gonum.org/v1/gonum/stat"
 	"gonum.org/v1/plot"
 	"gonum.org/v1/plot/plotter"
 	"gonum.org/v1/plot/vg"
@@ -340,8 +340,8 @@ func Chi2(ps []float64) float64 {
 
 	// reads the FITS files and builds C_eta
 
-	c_eta := mat64.NewDense(2220, 2220, nil)
-	c_eta_temp := mat64.NewDense(2220, 2220, nil)
+	c_eta := mat.NewDense(2220, 2220, nil)
+	c_eta_temp := mat.NewDense(2220, 2220, nil)
 
 	c_eta_temp = matrice("./covmat/C_bias.fits")
 	c_eta.Add(c_eta, c_eta_temp)
@@ -368,13 +368,13 @@ func Chi2(ps []float64) float64 {
 	c_eta.Add(c_eta, c_eta_temp)
 
 	// computes the A^t C_eta A part of the covariance matrix
-	a_vector := mat64.NewVector(3, []float64{1, ps[1], -ps[2]})
+	a_vector := mat.NewVecDense(3, []float64{1, ps[1], -ps[2]})
 
 	c_mat_elements := make([]float64, N*N)
 	i, j := 0, 0
 	for k := 0; k < N*N; k++ {
 		submat := c_eta.Slice(i, i+3, j, j+3)
-		element := mat64.Inner(a_vector, submat, a_vector)
+		element := mat.Inner(a_vector, submat, a_vector)
 		c_mat_elements[k] = element
 		if i+3 < N*3-1 {
 			i = i + 3
@@ -384,7 +384,7 @@ func Chi2(ps []float64) float64 {
 		}
 	}
 
-	c_mat := mat64.NewDense(N, N, c_mat_elements)
+	c_mat := mat.NewDense(N, N, c_mat_elements)
 
 	// builds the covariance matrix by addind the diagonal matrices
 
@@ -396,7 +396,7 @@ func Chi2(ps []float64) float64 {
 	elements := strings.Split(str2, "\n")
 	elements = append(elements[:0], elements[4:]...)
 
-	sigma_mat := mat64.NewDense(N, N, nil)
+	sigma_mat := mat.NewDense(N, N, nil)
 	for i := 0; i < N; i++ {
 		words := strings.Split(elements[i], " ")
 		sz, slen, scoh := AtoF(words[4]), AtoF(words[2]), AtoF(words[0])
@@ -404,12 +404,12 @@ func Chi2(ps []float64) float64 {
 		sigma_mat.Set(i, i, val)
 	}
 
-	covmat := mat64.NewDense(N, N, nil)
+	covmat := mat.NewDense(N, N, nil)
 	covmat.Add(c_mat, sigma_mat)
 
 	// builds the vector mu_hat - mu_lambdaCDM
 
-	mu_vector := mat64.NewVector(len(mu_diff), mu_diff)
+	mu_vector := mat.NewVecDense(len(mu_diff), mu_diff)
 
 	// inverses the matrix C using a Cholesky decomposition
 
@@ -417,25 +417,25 @@ func Chi2(ps []float64) float64 {
 	if rows != cols {
 		log.Fatalf("cov-matrix not square")
 	}
-	inv := mat64.NewSymDense(rows, nil)
+	inv := mat.NewSymDense(rows, nil)
 	for i := 0; i < rows; i++ {
 		for j := i; j < rows; j++ {
 			inv.SetSym(i, j, covmat.At(i, j))
 		}
 	}
-	var chol mat64.Cholesky
+	var chol mat.Cholesky
 	if ok := chol.Factorize(inv); !ok {
 		log.Fatalf("cov-matrix not positive semi-definite")
 	}
 
-	err2 := inv.InverseCholesky(&chol)
+	err2 := chol.InverseTo(inv)
 	if err2 != nil {
 		log.Fatal(err2)
 	}
 
 	// returns the final chi2
 
-	return mat64.Inner(mu_vector, inv, mu_vector)
+	return mat.Inner(mu_vector, inv, mu_vector)
 }
 
 // test function for the computaion of chi2
@@ -460,7 +460,7 @@ func FitChi2(f func(ps []float64) float64, ps []float64, settings *optimize.Sett
 }
 
 // reads a FITS fil, extracts the data and convert them into the corresponding matrix
-func matrice(file string) *mat64.Dense {
+func matrice(file string) *mat.Dense {
 
 	r, err := os.Open(file)
 	if err != nil {
@@ -482,7 +482,7 @@ func matrice(file string) *mat64.Dense {
 	raw := make([]float64, rows*cols)
 	err = img.Read(&raw)
 
-	Mat := mat64.NewDense(2220, 2220, raw)
+	Mat := mat.NewDense(2220, 2220, raw)
 
 	return Mat
 }
