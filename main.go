@@ -17,8 +17,6 @@ import (
 
 	"github.com/astrogo/fitsio"
 
-	//	"go-hep.org/x/hep/fit"
-
 	"gonum.org/v1/gonum/diff/fd"
 	"gonum.org/v1/gonum/integrate"
 	"gonum.org/v1/gonum/mat"
@@ -195,7 +193,7 @@ func Chi2(ps []float64) float64 {
 	for i, v := range supernovae {
 		split_str := strings.Split(v, " ")
 		if len(split_str) != 21 {
-			os.Exit(1)
+			log.Fatalf("invalid number of jla_lcparams fields. got=%d, want=%d", len(split_str), 21)
 		}
 
 		zcmb[i] = atof(split_str[1])
