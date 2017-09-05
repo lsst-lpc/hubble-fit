@@ -148,6 +148,9 @@ func FitChi2(f func(ps []float64) float64, ps []float64, settings *optimize.Sett
 	grad := func(grad, ps []float64) {
 		fd.Gradient(grad, f, ps, nil)
 	}
+	hess := func(hess mat.MutableSymmetric, x []float64) {
+		fd.Hessian(hess.(*mat.SymDense), f, x, nil)
+	}
 
 	if m == nil {
 		m = &optimize.NelderMead{}
@@ -159,6 +162,7 @@ func FitChi2(f func(ps []float64) float64, ps []float64, settings *optimize.Sett
 	p := optimize.Problem{
 		Func: f,
 		Grad: grad,
+		Hess: hess,
 	}
 
 	return optimize.Local(p, p0, settings, m)
