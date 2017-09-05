@@ -54,12 +54,16 @@ $> time hubble-fit
 Number of supernovae :  740
 mean of the residuals  0.014391538550558799
 mean of the absolute residuals  0.12726543895212666
-res=&{Location:{X:[0.295 0.141 3.101 -19.05 -0.07] F:652.7606127419591 Gradient:[] Hessian:<nil>} Stats:{MajorIterations:19 FuncEvaluations:41 GradEvaluations:0 HessEvaluations:0 Runtime:24.719070554s} Status:FunctionConvergence}
-Omega M :  0.295
-Alpha :  0.141
-Beta :  3.101
-Mb :  -19.05
-Delta M :  -0.07
+hubble: initial parameters: [0.295 0.141 3.101 -19.05 -0.07]
+res=&{Location:{X:[0.295 0.141 3.101 -19.05 -0.07] F:652.7606127419591 Gradient:[] Hessian:<nil>} Stats:{MajorIterations:19 FuncEvaluations:41 GradEvaluations:0 HessEvaluations:0 Runtime:24.851189993s} Status:FunctionConvergence}
+hubble: status = FunctionConvergence
+hubble: func   = 652.760613
+==== results ====
+Omega M = +0.2950
+Alpha   = +0.1410
+Beta    = +3.1010
+Mb      = -19.0500
+Delta M = -0.0700
 
 real 0m26.481s
 user 0m27.824s

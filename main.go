@@ -40,7 +40,17 @@ const (
 
 func main() {
 
-	doProf := flag.Bool("prof", false, "enable CPU profiling")
+	log.SetPrefix("hubble: ")
+	log.SetFlags(0)
+
+	var (
+		doProf      = flag.Bool("prof", false, "enable CPU profiling")
+		methFlag    = flag.String("fit", "nm", "fit method to use")
+		concFlag    = flag.Int("ncpu", 0, "concurrency level")
+		verboseFlag = flag.Bool("v", false, "enable verbose mode")
+		timeoutFlag = flag.Duration("timeout", 0, "runtime timeout")
+	)
+
 	flag.Parse()
 
 	if *doProf {
@@ -52,6 +62,34 @@ func main() {
 
 		pprof.StartCPUProfile(f)
 		defer pprof.StopCPUProfile()
+	}
+
+	var meth optimize.Method
+	var settings = optimize.DefaultSettings()
+	settings.Concurrent = *concFlag
+
+	if *verboseFlag {
+		pr := optimize.NewPrinter()
+		pr.Writer = os.Stdout
+		settings.Recorder = pr
+	}
+	switch *methFlag {
+	case "nelder", "nm":
+		meth = &optimize.NelderMead{}
+	case "bfgs":
+		meth = &optimize.BFGS{}
+		// settings.FunctionThreshold = 1e-5
+		settings.FunctionConverge.Relative = 1e-5
+	case "newton":
+		meth = &optimize.Newton{}
+		// settings.FunctionThreshold = 1e-5
+		settings.FunctionConverge.Absolute = 1e-2
+	default:
+		log.Fatalf("invalid fit method value %q", *methFlag)
+	}
+
+	if *timeoutFlag != 0 {
+		settings.Runtime = *timeoutFlag
 	}
 
 	// reads the raw datas and format it into a slice of strings, each containing the information for a SN
@@ -143,16 +181,20 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	res, err := FitChi2(ctx.chi2, params, nil, nil)
+	log.Printf("initial parameters: %v", params)
+	res, err := FitChi2(ctx.chi2, params, settings, meth)
 	if err != nil {
 		log.Fatal(err)
 	}
 	fmt.Printf("res=%+v\n", res)
-	fmt.Println("Omega M : ", res.X[0])
-	fmt.Println("Alpha : ", res.X[1])
-	fmt.Println("Beta : ", res.X[2])
-	fmt.Println("Mb : ", res.X[3])
-	fmt.Println("Delta M : ", res.X[4])
+	log.Printf("status = %v", res.Status)
+	log.Printf("func   = %f", res.F)
+	fmt.Printf("==== results ====\n")
+	fmt.Printf("Omega M = %+.4f\n", res.X[0])
+	fmt.Printf("Alpha   = %+.4f\n", res.X[1])
+	fmt.Printf("Beta    = %+.4f\n", res.X[2])
+	fmt.Printf("Mb      = %+.4f\n", res.X[3])
+	fmt.Printf("Delta M = %+.4f\n ", res.X[4])
 }
 
 // FitChi2 is the test function for the computation of chi2
