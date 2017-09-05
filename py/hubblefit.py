@@ -1,3 +1,4 @@
+from __future__ import print_function
 from __future__ import division
 from scipy.integrate import quad
 from math import *
@@ -13,7 +14,8 @@ from operator import add
 from numpy.linalg import inv
 from iminuit import Minuit, describe, Struct
 #from Plot import *
-import cPickle
+try:    import cPickle as pickle
+except: import pickle
 import sys
 
 ###########
@@ -40,9 +42,9 @@ def savepkl(dic,name='nomame'):
 		-name : the name of the pkl file
 	'''
 	File = open('Results/pkl/' + name +'.pkl','w')
-	cPickle.dump(dic,File)
+	pickle.dump(dic,File)
 	File.close()
-		
+
 def Sx(X):
 	'''
 	Function that compute Sx of the distribution given in X
@@ -51,7 +53,7 @@ def Sx(X):
 	output : Sx(X)
 	'''
 	return N.sqrt(abs((1/(len(X)-1))*(sum((X-N.mean(X))**2))))
-		
+
 def RMS(X):
 	'''
 	Funtction that compute the RMS on a distribution
@@ -62,7 +64,7 @@ def RMS(X):
 	'''
 	rms = N.sqrt(abs((1/len(X))*(sum((X-N.mean(X))**2))))
 	return rms
-	
+
 def RMSerr(X):
 	'''
 	Funtction that compute the error on the RMS on a distribution
@@ -73,7 +75,7 @@ def RMSerr(X):
 	'''
 	rmserr = Sx(X)/(N.sqrt(2*len(X)))
 	return rmserr
-	
+
 def MEANerr(X):
 	'''
 	Function that compute the error ont he mean of the distribution given in X
@@ -85,7 +87,7 @@ def MEANerr(X):
 	'''
 	meanerr = Sx(X)* (1./N.sqrt(len(X)))
 	return meanerr
-	
+
 def Histo(x,mean,sigma_mean,std,stderr,P,orient='horizontal',xlabel='',ylabel=''):
 	'''
 	Function that plot the histogramm of the distribution given in x
@@ -110,7 +112,6 @@ def Histo(x,mean,sigma_mean,std,stderr,P,orient='horizontal',xlabel='',ylabel=''
 		P.set_ylabel(ylabel)
 	P.set_title('Residuals')
 	P.legend(bbox_to_anchor=(0.95, 1.0),prop={'size':10})
-	
 
 def comp_rms(residuals, dof, err=True, variance=None):
 	"""
@@ -132,9 +133,7 @@ def comp_rms(residuals, dof, err=True, variance=None):
 		rms_err = N.sqrt(2.*len(residuals)) / (2*N.sum(1./variance)*rms)
 	if err:
 		return rms, rms_err
-	else:
-	    return rms
-
+	return rms
 
 def intfun(x,y):
 	"""
@@ -144,7 +143,7 @@ def intfun(x,y):
 	-y:represent the parameter omgM
 	"""
 	return 1/sqrt(((1+y*x)*(1+x)**2)-(1-y)*x*(2+x))
-	
+
 def fitfundL(zcmb,omgM):
 	"""
 	Function which create the distance modulus for each supernovae
@@ -156,7 +155,7 @@ def fitfundL(zcmb,omgM):
 	"""
 	MU=[]
 	for i in range (len(zcmb)):
-	        zz=zcmb[i]
+		zz=zcmb[i]
 		MU.append(dL_z(zz,zz,omgM))
 	return MU  
 
@@ -214,7 +213,7 @@ def dmuexp(dmB,dX1,dC,alpha,beta):
 	"""
 	dmu=[]
 	for i in range(len(dmB)):
-	        dmu.append(sqrt(dmB[i]**2+(alpha*dX1[i])**2+(beta*dC[i])**2))
+		dmu.append(sqrt(dmB[i]**2+(alpha*dX1[i])**2+(beta*dC[i])**2))
 	return dmu
 
 def Remove_Matrix(Tab,ID):
@@ -226,7 +225,7 @@ def Remove_Matrix(Tab,ID):
 		tab = N.delete(N.arange(len(Tab[0])),ID,0)
 	except:
 		tab = N.delete(N.arange(len(Tab)),ID,0)
-		
+
 	#remove these lines to the original matrix
 	Tab = N.delete(Tab,tab,0)
 	try:
@@ -234,7 +233,7 @@ def Remove_Matrix(Tab,ID):
 	except:
 		'''nothing else to do'''
 	return Tab
-	
+
 def mu_cov(alpha, beta, IDJLA):
 	"""
 	#Function that buil the covariance matrix as Betoule et al (2014) betzeen SNe to get the chi2
@@ -259,8 +258,8 @@ def mu_cov(alpha, beta, IDJLA):
 	sigma_pecvel = (5 * 150 / 3e5) / (N.log(10.) * sigma[:, 2])
 	Cmu[N.diag_indices_from(Cmu)] += sigma[:, 0] ** 2 + sigma[:, 1] ** 2 + sigma_pecvel ** 2
 	#Cmu = Remove_Matrix(Cmu,IDJLA)
-	#print len(Cmu)
-	#print 'coucou'
+	#print(len(Cmu))
+	#print('coucou')
 	return Cmu
 
 def ecarts(zcmb,zhel,mu,omgM):
@@ -297,7 +296,7 @@ class Chi2: #Class definition
 		self.dC =  dC
 		self.M_stell =  M_stell
 		self.dL = N.zeros(shape=(len(IDJLA)))
-	
+
 	def chi2(self,omgM,alpha,beta,Mb,delta_M):
 		''' Funtion that calculate the chi2 '''
 		result=0.
@@ -313,7 +312,7 @@ class Chi2: #Class definition
 		result =  P.dot( (mu_z-self.dL), P.dot((Mat),(mu_z-self.dL)))
 		self.chi2tot = result
 		return result
-	
+
 def Hubble_diagram(zcmb,zhel,mB,dmB,X1,dX1,C,dC,M_stell,IDJLA,exp,results,label='Hubble diagram',DisToCenter='',omgM=0.295,alpha=0.141,beta=3.101,Mb=-19.05,delta_M=-0.070,plot=''):
 	"""
 	Function which make the hubble diagram of the given compilation.
@@ -345,10 +344,10 @@ def Hubble_diagram(zcmb,zhel,mB,dmB,X1,dX1,C,dC,M_stell,IDJLA,exp,results,label=
 	if len(zcmb) == 1 or len(zcmb) == 0 :
 		results.write('Not enough data \n')
 		return 0
-	print len(zcmb)
+	print(len(zcmb))
 	#Definition of the Chi2 object
 	chi2mini=Chi2(zcmb,zhel,mB,dmB,X1,dX1,C,dC,M_stell,IDJLA)
-	
+
 	#minimisation of the chi2
 	'''
 	next instruction can be changed :
@@ -369,13 +368,13 @@ def Hubble_diagram(zcmb,zhel,mB,dmB,X1,dX1,C,dC,M_stell,IDJLA,exp,results,label=
 	delta_M = m.args[4]
 
 	#Pcov = P.subplots()
-        #bins_X,bins_Y,contour_X_Y = m.contour('alpha', 'beta', bins=20, bound=1)
+	#bins_X,bins_Y,contour_X_Y = m.contour('alpha', 'beta', bins=20, bound=1)
 	#dic1 = {'alpha':bins_X,'beta':bins_Y,'contour_alpha_beta':contour_X_Y}
 	#m.draw_contour('alpha', 'beta', bins=20, bound=1)
-        #bins_X,bins_Y,contour_X_Y = m.contour('alpha', 'Mb', bins=20, bound=1)
+	#bins_X,bins_Y,contour_X_Y = m.contour('alpha', 'Mb', bins=20, bound=1)
 	#dic1 = {'alpha':bins_X,'Mb':bins_Y,'contour_alpha_Mb':contour_X_Y}
 	#m.draw_contour('alpha', 'Mb', bins=20, bound=1)
-        #bins_X,bins_Y,contour_X_Y = m.contour('Mb', 'beta', bins=20, bound=1)
+	#bins_X,bins_Y,contour_X_Y = m.contour('Mb', 'beta', bins=20, bound=1)
 	#dic1 = {'Mb':bins_X,'beta':bins_Y,'contour_Mb_beta':contour_X_Y}
 	#m.draw_contour('Mb', 'beta', bins=20, bound=1)
 
@@ -393,7 +392,6 @@ def Hubble_diagram(zcmb,zhel,mB,dmB,X1,dX1,C,dC,M_stell,IDJLA,exp,results,label=
 		savepkl(dic,'Late')
 		#savepkl(dic1,'Late1')
 
-		
 	#write some results in output
 	results.write(str((chi2mini.chi2tot)/(len(IDJLA)-5))+'  ')
 	results.write(str(chi2mini.chi2tot) + '  ')
@@ -404,7 +402,7 @@ def Hubble_diagram(zcmb,zhel,mB,dmB,X1,dX1,C,dC,M_stell,IDJLA,exp,results,label=
 
 	#Computation of the difference between the measured luminosity-distance modulus and the theorical one (residuals)
 	ecarts5=ecarts(zcmb,zhel,mufinal,omgM)
-	
+
 	#computation of the RMS,mean and their error of the distribution
 	#std5,std5err = comp_rms(N.array(ecarts5),(len(ecarts5)))
 	std5=N.std(ecarts5)
@@ -416,7 +414,7 @@ def Hubble_diagram(zcmb,zhel,mB,dmB,X1,dX1,C,dC,M_stell,IDJLA,exp,results,label=
 	results.write(str(std5)+'  ')
 
 	#mean = N.mean(ecarts5)
-	
+
 	#Computaion of the rms of the fit.
 	rms,err_rms = comp_rms(N.array(ecarts5), len(mB), err=True, variance=None)
 	results.write(str((omgM))+' ')
@@ -424,13 +422,13 @@ def Hubble_diagram(zcmb,zhel,mB,dmB,X1,dX1,C,dC,M_stell,IDJLA,exp,results,label=
 	results.write(str(beta)+' ')
 	results.write(str(Mb)+' ')
 	results.write(str(delta_M) + '\n')
-	
+
 	#creation of the curve that represents the function of the fit
 	xfunc = N.linspace(0.001,2,1000)
 	yfunc = N.zeros(len(xfunc))
 	yfunc = fitfundL(xfunc,omgM)
 	#Plotconfig()#zcmb,mufinal,'$Redshift$','$\\mu = m_b - (M - \\alpha X_1 - \\beta C)$'	)
-	
+
 	#Plot of the fit (a lot of configuration can be added here to make the plot visually better)
 	if plot=='':
 		f, (P1, P2) = P.subplots(2, sharex=True, sharey=False, gridspec_kw=dict(height_ratios=[3,1]))
@@ -449,14 +447,14 @@ def Hubble_diagram(zcmb,zhel,mB,dmB,X1,dX1,C,dC,M_stell,IDJLA,exp,results,label=
 		P1.legend(bbox_to_anchor=(0.5,1.),fontsize=10)
 		P2.scatter(zcmb,ecarts5,c='black',s=2)
 		P2.errorbar(zcmb,ecarts5, linestyle='',xerr=dz,yerr=dmufinal,ecolor='blue',alpha=1.0,zorder=0)
-	
+
 		#The x and y axis limits have to be changed manually
 		P2.set_xlim((min(zcmb)-0.02),(max(zcmb)+log10(1.14)))
 		P2.set_ylim(-1,1)
-	
+
 		psfile  = './HubbleDiagram' + '(' + str(len(zcmb))+'SNe)' + '.eps'
 		P.savefig(psfile)
-		
+
 		#second plot of the residuals (separately)
 		res, (P1, P2) = P.subplots(1,2, sharex=False, sharey=True,gridspec_kw=dict(width_ratios=[3,1]))
 		P1.scatter(zcmb,ecarts5,c='black',s=2)
@@ -470,10 +468,10 @@ def Hubble_diagram(zcmb,zhel,mB,dmB,X1,dX1,C,dC,M_stell,IDJLA,exp,results,label=
 		P1.plot(N.linspace(0.001,1000,1000),N.linspace(0,0,1000))
 		res.subplots_adjust(hspace=0.30)
 		Histo(ecarts5,mean5,sigma_mean5,std5,std5err,P2)
-	
+
 		psfile  = './residuals' + '(' + str(len(zcmb))+'SNe)' + '.eps'
 		P.savefig(psfile)
-	
+
 	elif plot!='':
 		plot.scatter(zcmb,mufinal,color='black',s=2,marker='.')#,label=('Chi2=' + str("%.2f" % chi2mini.chi2tot) + '\n' + 'Chi2/dof= ' + str("%.2f" % ((chi2mini.chi2tot)/(len(IDJLA)-3))) + '\n' 'Mean =' + str("%.3f" % mean5) + '\n' + 'RMS = ' + str("%.3f" % std5)),color='black') # + '$\pm$' + str("%.3f" % (std5/N.sqrt(740)))
 		plot.yaxis.set_major_locator(MultipleLocator(base=5.))
@@ -484,7 +482,7 @@ def Hubble_diagram(zcmb,zhel,mB,dmB,X1,dX1,C,dC,M_stell,IDJLA,exp,results,label=
 		plot.set_xlim((min(zcmb)-0.02),(max(zcmb)+log10(2)))
 		plot.set_ylim(31,44)
 		plot.plot(xfunc,yfunc,'k',lw=0.8)		
-	
+
 	if DisToCenter != '':
 		#Same plot as previously but for another xaxis so the titles and label are different.
 		dist, (P1, P2) = P.subplots(1,2, sharex=False, sharey=True,gridspec_kw=dict(width_ratios=[3,1]))
@@ -500,14 +498,13 @@ def Hubble_diagram(zcmb,zhel,mB,dmB,X1,dX1,C,dC,M_stell,IDJLA,exp,results,label=
 		res.subplots_adjust(hspace=0.30)
 		Histo(ecarts5,mean5,sigma_mean5,std5,std5err,P2)
 		P.savefig('./'+label+' - residuals_DisToCenter'+'.png',dpi=300)
-	
+		pass
 	return m,ecarts5
-	
+
 #######
 #Main
 #######
 if __name__=='__main__':
-
 	#First file is JLA data itself
 	jlaData=N.loadtxt('./data/jla_lcparams.txt',dtype='str')
 	#jlaData=N.loadtxt('/data/software/jla_likelihood_v6/data/jla_lcparams.txt',dtype='str')
@@ -535,5 +532,5 @@ if __name__=='__main__':
 	results.write('#Chi2/d.o.f. Chi2 mean_of_the_residuals rms Omega_M  alpha beta Mb delta_M \n')
 	fit = Hubble_diagram(zcmb,zhel,mB,dmB,X1,dX1,C,dC,M_stell,IDJLA,exp,results,'Hubble diagram, made with JLA dataset,','',omgM,alpha,beta,Mb,delta_M)
 	results.close()
-	P.show()
-	
+	if False: P.show()
+	pass
