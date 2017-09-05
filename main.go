@@ -17,8 +17,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/astrogo/fitsio"
-
 	"gonum.org/v1/gonum/diff/fd"
 	"gonum.org/v1/gonum/integrate"
 	"gonum.org/v1/gonum/mat"
@@ -38,10 +36,6 @@ const (
 	beta    = 3.101     // free parameter for the Hubble fit (factor for color)
 	Mb      = -19.05    // absolute blue magnitude of a 1A SN
 	delta_M = -0.070    // uncertainty on the absolute blue magnitude
-)
-
-var (
-	Ceta *mat.Dense
 )
 
 func main() {
@@ -145,7 +139,11 @@ func main() {
 
 	// computes the best values for the five parameters by minimizing chi2
 	var params = []float64{0.295, 0.141, 3.101, -19.05, -0.070}
-	res, err := FitChi2(Chi2, params, nil, nil)
+	ctx, err := newContext()
+	if err != nil {
+		log.Fatal(err)
+	}
+	res, err := FitChi2(ctx.chi2, params, nil, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -180,151 +178,6 @@ func FitChi2(f func(ps []float64) float64, ps []float64, settings *optimize.Sett
 	}
 
 	return optimize.Local(p, p0, settings, m)
-}
-
-// Chi2 is the test function for a chi2 computation that takes into account the covariance matrix
-func Chi2(ps []float64) float64 {
-
-	// reads the raw datas and format it into a slice of strings, each containing the information for a SN
-
-	datas, err := ioutil.ReadFile("./data/jla_lcparams.txt")
-	if err != nil {
-		log.Fatal(err)
-	}
-	str := strings.Trim(string(datas), "\n")               // gets rid, if needed, of a new line symbol at the end of the file
-	supernovae := strings.Split(str, "\n")                 // builds a slice with data for a SN in each item
-	supernovae = append(supernovae[:0], supernovae[1:]...) // suppress the first item (labels of the columns)
-
-	// creates slices with the needed values from JLA datas
-
-	var (
-		N       = len(supernovae)
-		zcmb    = make([]float64, N) // redshift in the cmb frame
-		mb      = make([]float64, N) // b band peak magnitude
-		stretch = make([]float64, N) // stretch factor
-		colour  = make([]float64, N) // colour factor
-		m_stell = make([]float64, N) // log10 of the host galaxy stellar mass
-	)
-
-	for i, v := range supernovae {
-		split_str := strings.Split(v, " ")
-		if len(split_str) != 21 {
-			log.Fatalf("invalid number of jla_lcparams fields. got=%d, want=%d", len(split_str), 21)
-		}
-
-		zcmb[i] = atof(split_str[1])
-		mb[i] = atof(split_str[4])
-		stretch[i] = atof(split_str[6])
-		colour[i] = atof(split_str[8])
-		m_stell[i] = atof(split_str[10])
-	}
-
-	// creates slices for theoretical and experimental mus and the associated errors
-
-	var (
-		mu_exp  = make([]float64, N)
-		mu_th   = make([]float64, N)
-		mu_diff = make([]float64, N)
-	)
-
-	for i := 0; i < N; i++ {
-		if m_stell[i] < 10 {
-			mu_exp[i] = mb[i] - ps[3] + ps[1]*stretch[i] - ps[2]*colour[i]
-		} else {
-			mu_exp[i] = mb[i] - ps[3] - ps[4] + ps[1]*stretch[i] - ps[2]*colour[i]
-		}
-	}
-
-	for i := 0; i < N; i++ {
-		const n = 1000
-		xs := make([]float64, n+1)
-		ys := make([]float64, n+1)
-
-		for j := range xs {
-			xs[j] = zcmb[i] * float64(j) / float64(n)
-			ys[j] = 1 / math.Sqrt((1+xs[j]*ps[0])*(1+xs[j])*(1+xs[j])-(1-ps[0])*(2+xs[j])*xs[j])
-		}
-
-		mu_th[i] = 5 * math.Log10(((1+zcmb[i])*c/(10*H))*integrate.Trapezoidal(xs, ys))
-	}
-
-	for i := 0; i < N; i++ {
-		mu_diff[i] = mu_exp[i] - mu_th[i]
-	}
-
-	c_eta := getCeta()
-
-	// computes the A^t C_eta A part of the covariance matrix
-	a_vector := mat.NewVecDense(3, []float64{1, ps[1], -ps[2]})
-
-	c_mat_elements := make([]float64, N*N)
-	i, j := 0, 0
-	for k := 0; k < N*N; k++ {
-		submat := c_eta.Slice(i, i+3, j, j+3)
-		element := mat.Inner(a_vector, submat, a_vector)
-		c_mat_elements[k] = element
-		if i+3 < N*3-1 {
-			i = i + 3
-		} else {
-			j = j + 3
-			i = 0
-		}
-	}
-
-	c_mat := mat.NewDense(N, N, c_mat_elements)
-
-	// builds the covariance matrix by addind the diagonal matrices
-
-	data, err := ioutil.ReadFile("./covmat/sigma_mu.txt")
-	if err != nil {
-		log.Fatal(err)
-	}
-	str2 := strings.Trim(string(data), " \n")
-	elements := strings.Split(str2, "\n")
-	elements = append(elements[:0], elements[4:]...)
-
-	sigma_mat := mat.NewDense(N, N, nil)
-	for i := 0; i < N; i++ {
-		var (
-			words = strings.Split(elements[i], " ")
-			sz    = atof(words[4])
-			slen  = atof(words[2])
-			scoh  = atof(words[0])
-			val   = ((5*150000)/(sz*c))*((5*150000)/(sz*c)) + slen*slen + scoh*scoh
-		)
-		sigma_mat.Set(i, i, val)
-	}
-
-	covmat := mat.NewDense(N, N, nil)
-	covmat.Add(c_mat, sigma_mat)
-
-	// builds the vector mu_hat - mu_lambdaCDM
-
-	mu_vector := mat.NewVecDense(len(mu_diff), mu_diff)
-
-	// inverses the matrix C using a Cholesky decomposition
-
-	rows, cols := covmat.Dims()
-	if rows != cols {
-		log.Fatalf("cov-matrix not square")
-	}
-	inv := mat.NewSymDense(rows, nil)
-	for i := 0; i < rows; i++ {
-		for j := i; j < rows; j++ {
-			inv.SetSym(i, j, covmat.At(i, j))
-		}
-	}
-	var chol mat.Cholesky
-	if ok := chol.Factorize(inv); !ok {
-		log.Fatalf("cov-matrix not positive semi-definite")
-	}
-
-	err2 := chol.InverseTo(inv)
-	if err2 != nil {
-		log.Fatal(err2)
-	}
-
-	return mat.Inner(mu_vector, inv, mu_vector)
 }
 
 // difference computes the differences between two slices, value by value
@@ -514,47 +367,3 @@ func newHistogram(s []float64) *plot.Plot {
 }
 
 // reads a FITS fil, extracts the data and convert them into the corresponding matrix
-func newDenseFrom(file string) *mat.Dense {
-
-	r, err := os.Open(file)
-	if err != nil {
-		panic(err)
-	}
-	defer r.Close()
-
-	fits, err := fitsio.Open(r)
-	if err != nil {
-		panic(err)
-	}
-	defer fits.Close()
-
-	hdu := fits.HDU(0)
-	img := hdu.(fitsio.Image)
-	hdr := img.Header()
-	rows := hdr.Axes()[0]
-	cols := hdr.Axes()[1]
-
-	raw := make([]float64, rows*cols)
-	err = img.Read(&raw)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	return mat.NewDense(2220, 2220, raw)
-}
-
-func getCeta() *mat.Dense {
-	return Ceta
-}
-
-func init() {
-	Ceta = mat.NewDense(2220, 2220, nil)
-	Ceta.Add(Ceta, newDenseFrom("./covmat/C_bias.fits"))
-	Ceta.Add(Ceta, newDenseFrom("./covmat/C_cal.fits"))
-	Ceta.Add(Ceta, newDenseFrom("./covmat/C_dust.fits"))
-	Ceta.Add(Ceta, newDenseFrom("./covmat/C_host.fits"))
-	Ceta.Add(Ceta, newDenseFrom("./covmat/C_model.fits"))
-	Ceta.Add(Ceta, newDenseFrom("./covmat/C_nonia.fits"))
-	Ceta.Add(Ceta, newDenseFrom("./covmat/C_pecvel.fits"))
-	Ceta.Add(Ceta, newDenseFrom("./covmat/C_stat.fits"))
-}
