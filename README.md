@@ -48,5 +48,63 @@ Once you have installed the [Go](https://golang.org) toolchain:
 ```sh
 $> go get github.com/lsst-lpc/hubble-fit
 $> cd $GOPATH/github.com/lsst-lpc/hubble-fit
-$> hubble-fit
+
+$> time hubble-fit
+
+Number of supernovae :  740
+mean of the residuals  0.014391538550558799
+mean of the absolute residuals  0.12726543895212666
+res=&{Location:{X:[0.295 0.141 3.101 -19.05 -0.07] F:652.7606127419591 Gradient:[] Hessian:<nil>} Stats:{MajorIterations:19 FuncEvaluations:41 GradEvaluations:0 HessEvaluations:0 Runtime:24.719070554s} Status:FunctionConvergence}
+Omega M :  0.295
+Alpha :  0.141
+Beta :  3.101
+Mb :  -19.05
+Delta M :  -0.07
+
+real 0m26.481s
+user 0m27.824s
+sys  0m0.496s
+```
+
+## Python reference
+
+```sh
+$> cd $GOPATH/github.com/lsst-lpc/hubble-fit
+$> time python2 ./py/hubblefit.py
+
+./py/hubblefit.py:387: InitialParamWarning: errordef is not given. Default to 1.
+  limit_Mb=(-20., -18.), limit_delta_M=(-0.1, -0.0), fix_omgM=False, fix_alpha=False, fix_beta=False, fix_Mb=False, fix_delta_M=False, print_level=1)
+**************************************************
+*                     MIGRAD                     *
+**************************************************
+
+**********************************************************************
+---------------------------------------------------------------------------------------
+fval = 682.8910357476947 | total call = 90 | ncalls = 90
+edm = 5.6711138504257765e-05 (Goal: 1e-05) | up = 1.0
+---------------------------------------------------------------------------------------
+|          Valid |    Valid Param | Accurate Covar |         Posdef |    Made Posdef |
+---------------------------------------------------------------------------------------
+|           True |           True |           True |           True |          False |
+---------------------------------------------------------------------------------------
+|     Hesse Fail |        Has Cov |      Above EDM |                |  Reach calllim |
+---------------------------------------------------------------------------------------
+|          False |           True |          False |            u'' |          False |
+---------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------
+|      |  Name   |  Value   | Para Err |   Err-   |   Err+   |  Limit-  |  Limit+  |          |
+------------------------------------------------------------------------------------------------
+|    0 |    omgM =  0.2951  |  0.03327 |          |          |  0.2     |  0.4     |          |
+|    1 |   alpha =  0.1412  |  0.00657 |          |          |  0.1     |  0.2     |          |
+|    2 |    beta =  3.102   |  0.08064 |          |          |  2       |  4       |          |
+|    3 |      Mb = -19.05   |  0.02317 |          |          | -20      | -18      |          |
+|    4 | delta_M = -0.07008 |  0.02216 |          |          | -0.1     | -0       |          |
+------------------------------------------------------------------------------------------------
+
+**********************************************************************
+
+real 1m17.719s
+user 1m12.372s
+sys  0m4.808s
 ```
