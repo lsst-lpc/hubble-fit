@@ -6,12 +6,14 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"image/color"
 	"io/ioutil"
 	"log"
 	"math"
 	"os"
+	"runtime/pprof"
 	"strconv"
 	"strings"
 
@@ -43,6 +45,20 @@ var (
 )
 
 func main() {
+
+	doProf := flag.Bool("prof", false, "enable CPU profiling")
+	flag.Parse()
+
+	if *doProf {
+		f, err := os.Create("cpu.prof")
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer f.Close()
+
+		pprof.StartCPUProfile(f)
+		defer pprof.StopCPUProfile()
+	}
 
 	// reads the raw datas and format it into a slice of strings, each containing the information for a SN
 	datas, err := ioutil.ReadFile("./data/jla_lcparams.txt")
