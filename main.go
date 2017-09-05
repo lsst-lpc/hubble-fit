@@ -362,18 +362,15 @@ func integral(z, n float64) float64 {
 	// integrate.Trapezoidal takes two slices (abscissa and ordinate) from which to compute the integral
 	// inputs : z = redshift, n = number of steps for the trapeze method
 
-	abs := make([]float64, int(n+1))
-	ord := make([]float64, int(n+1))
+	xs := make([]float64, int(n+1))
+	ys := make([]float64, int(n+1))
 
-	for i := 0; i <= int(n); i++ {
-		abs[i] = z * float64(i) / n
+	for i := range xs {
+		xs[i] = z * float64(i) / n
+		ys[i] = 1 / math.Sqrt((1+xs[i]*omgM)*(1+xs[i])*(1+xs[i])-(1-omgM)*(2+xs[i])*xs[i])
 	}
 
-	for j := 0; j <= int(n); j++ {
-		ord[j] = 1 / math.Sqrt((1+abs[j]*omgM)*(1+abs[j])*(1+abs[j])-(1-omgM)*(2+abs[j])*abs[j])
-	}
-
-	return integrate.Trapezoidal(abs, ord)
+	return integrate.Trapezoidal(xs, ys)
 
 }
 
@@ -389,8 +386,8 @@ func mu_th(z, n float64) float64 {
 // n is the number of steps for the integral.
 func mu_th_slice(s []float64, n float64) []float64 {
 	diag_ord := make([]float64, len(s))
-	for i := range s {
-		diag_ord[i] = mu_th(s[i], n)
+	for i, v := range s {
+		diag_ord[i] = mu_th(v, n)
 	}
 	return diag_ord
 }
@@ -401,7 +398,7 @@ func mu_exp_slice(m_stell, mb, stretch, colour []float64) []float64 {
 	// inputs : mB = B band peak magnitude, stretch and colour = SALT2 parameters
 
 	slice := make([]float64, len(m_stell))
-	for i := 0; i < len(mb); i++ {
+	for i := range mb {
 		if m_stell[i] < 10 {
 			slice[i] = mb[i] - Mb + alpha*stretch[i] - beta*colour[i]
 		} else {
