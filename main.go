@@ -13,6 +13,7 @@ import (
 	"log"
 	"math"
 	"os"
+	"runtime"
 	"runtime/pprof"
 	"strconv"
 	"strings"
@@ -46,7 +47,7 @@ func main() {
 	var (
 		doProf        = flag.Bool("prof", false, "enable CPU profiling")
 		methFlag      = flag.String("fit", "nm", "fit method to use")
-		concFlag      = flag.Int("ncpu", 0, "concurrency level")
+		concFlag      = flag.Int("ncpu", -1, "concurrency level")
 		verboseFlag   = flag.Bool("v", false, "enable verbose mode")
 		timeoutFlag   = flag.Duration("timeout", 0, "runtime timeout")
 		gradThresFlag = flag.Float64("grad", 1e-5, "gradient threshold (if zero, use gonum/optimize default)")
@@ -65,10 +66,14 @@ func main() {
 		defer pprof.StopCPUProfile()
 	}
 
+	if *concFlag < 0 {
+		*concFlag = runtime.NumCPU()
+	}
+
 	var meth optimize.Method
 	var settings = optimize.DefaultSettings()
-	settings.Concurrent = *concFlag
 	settings.GradientThreshold = *gradThresFlag
+	settings.Concurrent = *concFlag
 
 	if *verboseFlag {
 		pr := optimize.NewPrinter()

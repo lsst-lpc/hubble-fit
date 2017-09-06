@@ -51,11 +51,12 @@ $> cd $GOPATH/github.com/lsst-lpc/hubble-fit
 
 $> time hubble-fit
 
+hubble: using method: *optimize.NelderMead (grad=false hessian=false)
 Number of supernovae :  740
 mean of the residuals  0.014391538550558799
 mean of the absolute residuals  0.12726543895212666
 hubble: initial parameters: [0.295 0.141 3.101 -19.05 -0.07]
-res=&{Location:{X:[0.295 0.141 3.101 -19.05 -0.07] F:652.7606127419591 Gradient:[] Hessian:<nil>} Stats:{MajorIterations:19 FuncEvaluations:41 GradEvaluations:0 HessEvaluations:0 Runtime:24.851189993s} Status:FunctionConvergence}
+res=&{Location:{X:[0.295 0.141 3.101 -19.05 -0.07] F:652.7606127419591 Gradient:[] Hessian:0xc429cd80c0} Stats:{MajorIterations:19 FuncEvaluations:41 GradEvaluations:0 HessEvaluations:0 Runtime:25.060160788s} Status:FunctionConvergence}
 hubble: status = FunctionConvergence
 hubble: func   = 652.760613
 ==== results ====
@@ -64,10 +65,15 @@ Alpha   = +0.1410
 Beta    = +3.1010
 Mb      = -19.0500
 Delta M = -0.0700
+Hessian: ⎡ 3510.2425270080566   1167.8890228271484    181.1999397277832   -3906.792751312256  -1216.6510734558105⎤
+         ⎢ 1167.8890228271484    46425.35659790039   257.57526779174805   -784.8816604614258    3034.029556274414⎥
+         ⎢  181.1999397277832   257.57526779174805   302.06271743774414  -200.42919158935547   -21.88933563232422⎥
+         ⎢ -3906.792751312256   -784.8816604614258  -200.42919158935547    8549.161113739014   3000.5796813964844⎥
+         ⎣-1216.6510734558105    3034.029556274414   -21.88933563232422   3000.5796813964844    4887.541770935059⎦
 
-real 0m26.481s
-user 0m27.824s
-sys  0m0.496s
+real 0m35.845s
+user 1m3.329s
+sys  0m0.545s
 ```
 
 ## Python reference
