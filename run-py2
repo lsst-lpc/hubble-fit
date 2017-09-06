@@ -1,0 +1,4 @@
+#!/bin/sh
+
+export PYTHONPATH=`pwd`/local-py2/lib/python2.7/site-packages:$PYTHONPATH
+time python2 ./py/hubblefit.py
