@@ -44,11 +44,12 @@ func main() {
 	log.SetFlags(0)
 
 	var (
-		doProf      = flag.Bool("prof", false, "enable CPU profiling")
-		methFlag    = flag.String("fit", "nm", "fit method to use")
-		concFlag    = flag.Int("ncpu", 0, "concurrency level")
-		verboseFlag = flag.Bool("v", false, "enable verbose mode")
-		timeoutFlag = flag.Duration("timeout", 0, "runtime timeout")
+		doProf        = flag.Bool("prof", false, "enable CPU profiling")
+		methFlag      = flag.String("fit", "nm", "fit method to use")
+		concFlag      = flag.Int("ncpu", 0, "concurrency level")
+		verboseFlag   = flag.Bool("v", false, "enable verbose mode")
+		timeoutFlag   = flag.Duration("timeout", 0, "runtime timeout")
+		gradThresFlag = flag.Float64("grad", 1e-5, "gradient threshold (if zero, use gonum/optimize default)")
 	)
 
 	flag.Parse()
@@ -67,6 +68,7 @@ func main() {
 	var meth optimize.Method
 	var settings = optimize.DefaultSettings()
 	settings.Concurrent = *concFlag
+	settings.GradientThreshold = *gradThresFlag
 
 	if *verboseFlag {
 		pr := optimize.NewPrinter()
@@ -78,16 +80,17 @@ func main() {
 		meth = &optimize.NelderMead{}
 	case "bfgs":
 		meth = &optimize.BFGS{}
-		// settings.FunctionThreshold = 1e-5
-		settings.FunctionConverge.Relative = 1e-5
+	case "cg":
+		meth = &optimize.CG{}
+	case "lbfgs":
+		meth = &optimize.LBFGS{}
 	case "newton":
 		meth = &optimize.Newton{}
-		// settings.FunctionThreshold = 1e-5
-		settings.FunctionConverge.Absolute = 1e-2
 	default:
 		log.Fatalf("invalid fit method value %q", *methFlag)
 	}
 
+	log.Printf("using method: %[1]T (grad=%v hessian=%v)", meth, meth.Needs().Gradient, meth.Needs().Hessian)
 	if *timeoutFlag != 0 {
 		settings.Runtime = *timeoutFlag
 	}
@@ -182,7 +185,7 @@ func main() {
 		log.Fatal(err)
 	}
 	log.Printf("initial parameters: %v", params)
-	res, err := FitChi2(ctx.chi2, params, settings, meth)
+	res, err := ctx.fit(params, settings, meth)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -194,16 +197,34 @@ func main() {
 	fmt.Printf("Alpha   = %+.4f\n", res.X[1])
 	fmt.Printf("Beta    = %+.4f\n", res.X[2])
 	fmt.Printf("Mb      = %+.4f\n", res.X[3])
-	fmt.Printf("Delta M = %+.4f\n ", res.X[4])
+	fmt.Printf("Delta M = %+.4f\n", res.X[4])
+
+	if res.Hessian != nil {
+		hdr := "Hessian: "
+		fmt.Printf("%s%v\n", hdr, mat.Formatted(res.Hessian, mat.Prefix(strings.Repeat(" ", len(hdr)))))
+		var cov mat.Dense
+		cov.Clone(res.Hessian)
+		err = cov.Inverse(&cov)
+		if err != nil {
+			log.Fatal(err)
+		}
+		for i := range params {
+			fmt.Printf("err[%d]: %v\n", i, cov.At(i, i))
+		}
+	}
 }
 
 // FitChi2 is the test function for the computation of chi2
 func FitChi2(f func(ps []float64) float64, ps []float64, settings *optimize.Settings, m optimize.Method) (*optimize.Result, error) {
+	var fds fd.Settings
+	fds.Concurrent = settings != nil && settings.Concurrent > 0
+
 	grad := func(grad, ps []float64) {
 		fd.Gradient(grad, f, ps, nil)
 	}
+
 	hess := func(hess mat.MutableSymmetric, x []float64) {
-		fd.Hessian(hess.(*mat.SymDense), f, x, nil)
+		fd.Hessian(hess.(*mat.SymDense), f, x, &fds)
 	}
 
 	if m == nil {

@@ -12,26 +12,30 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/astrogo/fitsio"
+	"gonum.org/v1/gonum/diff/fd"
 	"gonum.org/v1/gonum/integrate"
 	"gonum.org/v1/gonum/mat"
+	"gonum.org/v1/gonum/optimize"
 )
 
 type context struct {
-	jla jla
+	jla   jla
+	ceta  *mat.Dense
+	sigma *mat.Dense
 
-	mu_exp  []float64
-	mu_th   []float64
-	mu_diff []float64
+	pools struct {
+		mu_exp  sync.Pool
+		mu_th   sync.Pool
+		mu_diff sync.Pool
 
-	ceta   *mat.Dense
-	sigma  *mat.Dense
-	covbuf []float64
-
-	xs    [][]float64
-	ys    [][]float64
-	elmts []float64
+		covbuf sync.Pool
+		elmts  sync.Pool
+		xs     sync.Pool
+		ys     sync.Pool
+	}
 }
 
 func newContext() (*context, error) {
@@ -44,19 +48,34 @@ func newContext() (*context, error) {
 		return nil, err
 	}
 
-	ctx.mu_exp = make([]float64, ctx.jla.n)
-	ctx.mu_th = make([]float64, ctx.jla.n)
-	ctx.mu_diff = make([]float64, ctx.jla.n)
+	n := ctx.jla.n
+	nn := n * n
 
-	ctx.xs = make([][]float64, ctx.jla.n)
-	ctx.ys = make([][]float64, ctx.jla.n)
-	for i := range ctx.xs {
-		const n = 1000
-		ctx.xs[i] = make([]float64, n+1)
-		ctx.ys[i] = make([]float64, n+1)
-	}
+	pool := func(f func() interface{}) sync.Pool { return sync.Pool{New: f} }
 
-	ctx.elmts = make([]float64, ctx.jla.n*ctx.jla.n)
+	ctx.pools.mu_exp = pool(func() interface{} { return make([]float64, n) })
+	ctx.pools.mu_th = pool(func() interface{} { return make([]float64, n) })
+	ctx.pools.mu_diff = pool(func() interface{} { return make([]float64, n) })
+
+	ctx.pools.xs = pool(func() interface{} {
+		const N = 1000
+		o := make([][]float64, n)
+		for i := range o {
+			o[i] = make([]float64, N+1)
+		}
+		return o
+	})
+	ctx.pools.ys = pool(func() interface{} {
+		o := make([][]float64, n)
+		const N = 1000
+		for i := range o {
+			o[i] = make([]float64, N+1)
+		}
+		return o
+	})
+
+	ctx.pools.elmts = pool(func() interface{} { return make([]float64, nn) })
+	ctx.pools.covbuf = pool(func() interface{} { return make([]float64, nn) })
 
 	ctx.ceta, err = readCeta("./data/covmat")
 	if err != nil {
@@ -67,33 +86,60 @@ func newContext() (*context, error) {
 	if err != nil {
 		return nil, err
 	}
-	ctx.covbuf = make([]float64, ctx.jla.n*ctx.jla.n)
 
 	return &ctx, nil
+}
+
+func (ctx *context) fit(ps []float64, settings *optimize.Settings, method optimize.Method) (*optimize.Result, error) {
+	res, err := FitChi2(ctx.chi2, ps, settings, method)
+	if err != nil {
+		return res, err
+	}
+
+	if res.Hessian == nil {
+		var fds fd.Settings
+		fds.Concurrent = settings != nil && settings.Concurrent > 0
+		res.Hessian = mat.NewSymDense(len(ps), nil)
+		fd.Hessian(res.Hessian, ctx.chi2, res.X, &fds)
+	}
+
+	return res, err
 }
 
 // chi2 is the test function for a chi2 computation that takes into account the covariance matrix
 func (ctx *context) chi2(ps []float64) float64 {
 	N := ctx.jla.n
+	mu_exp := ctx.pools.mu_exp.Get().([]float64)
+	mu_th := ctx.pools.mu_th.Get().([]float64)
+	mu_diff := ctx.pools.mu_diff.Get().([]float64)
+	defer ctx.pools.mu_exp.Put(mu_exp)
+	defer ctx.pools.mu_th.Put(mu_th)
+	defer ctx.pools.mu_diff.Put(mu_diff)
+
+	xs := ctx.pools.xs.Get().([][]float64)
+	ys := ctx.pools.ys.Get().([][]float64)
+	defer ctx.pools.xs.Put(xs)
+	defer ctx.pools.ys.Put(ys)
+
 	for i := 0; i < N; i++ {
 		if ctx.jla.m_stell[i] < 10 {
-			ctx.mu_exp[i] = ctx.jla.mb[i] - ps[3] + ps[1]*ctx.jla.stretch[i] - ps[2]*ctx.jla.colour[i]
+			mu_exp[i] = ctx.jla.mb[i] - ps[3] + ps[1]*ctx.jla.stretch[i] - ps[2]*ctx.jla.colour[i]
 		} else {
-			ctx.mu_exp[i] = ctx.jla.mb[i] - ps[3] - ps[4] + ps[1]*ctx.jla.stretch[i] - ps[2]*ctx.jla.colour[i]
+			mu_exp[i] = ctx.jla.mb[i] - ps[3] - ps[4] + ps[1]*ctx.jla.stretch[i] - ps[2]*ctx.jla.colour[i]
 		}
 
 		const n = 1000
-		xs := ctx.xs[i]
-		ys := ctx.ys[i]
+		xsi := xs[i]
+		ysi := ys[i]
 
-		for j := range xs {
-			xs[j] = ctx.jla.zcmb[i] * float64(j) / float64(n)
-			ys[j] = 1 / math.Sqrt((1+xs[j]*ps[0])*(1+xs[j])*(1+xs[j])-(1-ps[0])*(2+xs[j])*xs[j])
+		for j := range xsi {
+			xsi[j] = ctx.jla.zcmb[i] * float64(j) / float64(n)
+			ysi[j] = 1 / math.Sqrt((1+xsi[j]*ps[0])*(1+xsi[j])*(1+xsi[j])-(1-ps[0])*(2+xsi[j])*xsi[j])
 		}
 
-		ctx.mu_th[i] = 5 * math.Log10(((1+ctx.jla.zcmb[i])*c/(10*H))*integrate.Trapezoidal(xs, ys))
+		mu_th[i] = 5 * math.Log10(((1+ctx.jla.zcmb[i])*c/(10*H))*integrate.Trapezoidal(xsi, ysi))
 
-		ctx.mu_diff[i] = ctx.mu_exp[i] - ctx.mu_th[i]
+		mu_diff[i] = mu_exp[i] - mu_th[i]
 	}
 
 	c_eta := ctx.ceta
@@ -101,7 +147,8 @@ func (ctx *context) chi2(ps []float64) float64 {
 	// computes the A^t C_eta A part of the covariance matrix
 	a_vector := mat.NewVecDense(3, []float64{1, ps[1], -ps[2]})
 
-	c_mat_elements := ctx.elmts
+	c_mat_elements := ctx.pools.elmts.Get().([]float64)
+	defer ctx.pools.elmts.Put(c_mat_elements)
 	i, j := 0, 0
 	for k := 0; k < N*N; k++ {
 		submat := c_eta.Slice(i, i+3, j, j+3)
@@ -118,12 +165,14 @@ func (ctx *context) chi2(ps []float64) float64 {
 	c_mat := mat.NewDense(N, N, c_mat_elements)
 
 	// builds the covariance matrix by addind the diagonal matrices
-	covmat := mat.NewDense(N, N, ctx.covbuf)
+	covbuf := ctx.pools.covbuf.Get().([]float64)
+	defer ctx.pools.covbuf.Put(covbuf)
+	covmat := mat.NewDense(N, N, covbuf)
 	covmat.Add(c_mat, ctx.sigma)
 
 	// builds the vector mu_hat - mu_lambdaCDM
 
-	mu_vector := mat.NewVecDense(len(ctx.mu_diff), ctx.mu_diff)
+	mu_vector := mat.NewVecDense(len(mu_diff), mu_diff)
 
 	// inverses the matrix C using a Cholesky decomposition
 
