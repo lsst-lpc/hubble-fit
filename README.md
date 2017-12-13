@@ -1,5 +1,7 @@
 # hubble-fit
 
+[![Build Status](https://travis-ci.org/lsst-lpc/hubble-fit.svg?branch=master)](https://travis-ci.org/lsst-lpc/hubble-fit)
+
 `hubble-fit` is a collection of functions to fit the Hubble diagram with a Cosmological model.
 
 The initial version was written in [Python](https://python.org).
