@@ -18,6 +18,7 @@ import (
 	"strconv"
 	"strings"
 
+	"go-hep.org/x/hep/hplot"
 	"gonum.org/v1/gonum/diff/fd"
 	"gonum.org/v1/gonum/integrate"
 	"gonum.org/v1/gonum/mat"
@@ -365,15 +366,11 @@ func newPoints(xs, ys []float64) plotter.XYs {
 }
 
 // newHubblePlot plots the given points
-func newHubblePlot(points plotter.XYs) *plot.Plot {
+func newHubblePlot(points plotter.XYs) *hplot.Plot {
 
 	// input : points = plotter.XYs created by the points function
 
-	p, err := plot.New()
-	if err != nil {
-		log.Panic(err)
-	}
-
+	p := hplot.New()
 	p.Title.Text = "Hubble diagram"
 	p.X.Label.Text = "Redshift z"
 	p.Y.Label.Text = "Distance mu"
@@ -414,15 +411,11 @@ func modified_integral(z, omega float64) float64 {
 }
 
 // builds a histogram from a given slice of values
-func newHistogram(s []float64) *plot.Plot {
+func newHistogram(s []float64) *hplot.Plot {
 
 	// input : s = slice containing the values to plot
 
-	p, err := plot.New()
-	if err != nil {
-		log.Panic(err)
-	}
-
+	p := hplot.New()
 	val := make(plotter.Values, len(s))
 	for i := range s {
 		val[i] = s[i]
