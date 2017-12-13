@@ -1,4 +1,5 @@
 #!/bin/sh
 
+go get -v .
 TIMEFLAGS="real=%e user=%U sys=%S CPU=%P MaxRSS=%M I/O=%I/%O"
-/usr/bin/time -f "${TIMEFLAGS}" hubble-fit
+/usr/bin/time -f "${TIMEFLAGS}" hubble-fit "$@"
