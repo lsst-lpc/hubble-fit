@@ -1,0 +1,4 @@
+#!/bin/sh
+
+TIMEFLAGS="real=%e user=%U sys=%S CPU=%P MaxRSS=%M I/O=%I/%O"
+/usr/bin/time -f "${TIMEFLAGS}" hubble-fit

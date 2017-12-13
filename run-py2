@@ -1,4 +1,5 @@
 #!/bin/sh
 
 export PYTHONPATH=`pwd`/local-py2/lib/python2.7/site-packages:$PYTHONPATH
-time python2 ./py/hubblefit.py
+TIMEFLAGS="real=%e user=%U sys=%S CPU=%P MaxRSS=%M I/O=%I/%O"
+/usr/bin/time -f "${TIMEFLAGS}" python2 ./py/hubblefit.py
