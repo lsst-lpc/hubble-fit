@@ -204,23 +204,27 @@ func main() {
 	fmt.Printf("Mb      = %+.4f\n", res.X[3])
 	fmt.Printf("Delta M = %+.4f\n", res.X[4])
 
-	if res.Hessian != nil {
-		hdr := "Hessian: "
-		fmt.Printf("%s%v\n", hdr, mat.Formatted(res.Hessian, mat.Prefix(strings.Repeat(" ", len(hdr)))))
-		var cov mat.Dense
-		cov.Clone(res.Hessian)
-		err = cov.Inverse(&cov)
-		if err != nil {
-			log.Fatal(err)
+	display(res, ctx.p)
+
+	/*
+		if res.Hessian != nil {
+			hdr := "Hessian: "
+			fmt.Printf("%s%v\n", hdr, mat.Formatted(res.Hessian, mat.Prefix(strings.Repeat(" ", len(hdr)))))
+			var cov mat.Dense
+			cov.Clone(res.Hessian)
+			err = cov.Inverse(&cov)
+			if err != nil {
+				log.Fatal(err)
+			}
+			for i := range params {
+				fmt.Printf("err[%d]: %v\n", i, cov.At(i, i))
+			}
 		}
-		for i := range params {
-			fmt.Printf("err[%d]: %v\n", i, cov.At(i, i))
-		}
-	}
+	*/
 }
 
 // FitChi2 is the test function for the computation of chi2
-func FitChi2(f func(ps []float64) float64, ps []float64, settings *optimize.Settings, m optimize.Method) (*optimize.Result, error) {
+func FitChi2(ctx *context, f func(ps []float64) float64, ps []float64, settings *optimize.Settings, m optimize.Method) (*optimize.Result, error) {
 	var fds fd.Settings
 	fds.Concurrent = settings != nil && settings.Concurrent > 0
 
@@ -239,13 +243,13 @@ func FitChi2(f func(ps []float64) float64, ps []float64, settings *optimize.Sett
 	p0 := make([]float64, len(ps))
 	copy(p0, ps)
 
-	p := optimize.Problem{
+	ctx.p = optimize.Problem{
 		Func: f,
 		Grad: grad,
 		Hess: hess,
 	}
 
-	return optimize.Local(p, p0, settings, m)
+	return optimize.Local(ctx.p, p0, settings, m)
 }
 
 // difference computes the differences between two slices, value by value
@@ -434,4 +438,36 @@ func newHistogram(s []float64) *plot.Plot {
 	return p
 }
 
-// reads a FITS fil, extracts the data and convert them into the corresponding matrix
+func display(res *optimize.Result, p optimize.Problem) {
+	// fmt.Printf("results: %#v\n", res)
+
+	errmat := mat.NewSymDense(len(res.X), nil)
+	errmat.CopySym(res.Hessian)
+
+	var ch mat.Cholesky
+	if ok := ch.Factorize(errmat); !ok {
+		log.Fatalf("could not factorize\n")
+	}
+
+	err := ch.InverseTo(errmat)
+	if err != nil {
+		log.Fatal(err)
+	}
+	for i, x := range errmat.RawSymmetric().Data {
+		errmat.RawSymmetric().Data[i] = math.Sqrt(x)
+	}
+
+	fmt.Printf("minimal function value: %8.3f\n", res.F)
+	// fmt.Printf("estimated diff to true minimum: %11.3e\n", edm(res, errmat))
+	fmt.Printf("number of parameters: %d\n", len(res.X))
+
+	// fmt.Printf("grad=%v\n", res.Gradient)
+	fmt.Printf("hess=%v\n", mat.Formatted(res.Hessian, mat.Prefix("     ")))
+
+	// fmt.Printf("errs= %v\n", mat.Formatted(errmat))
+
+	for i, x := range res.X {
+		xerr := errmat.At(i, i)
+		fmt.Printf("par-%03d: %+e +/- %e\n", i, x, xerr)
+	}
+}

@@ -22,6 +22,7 @@ import (
 )
 
 type context struct {
+	p     optimize.Problem
 	jla   jla
 	ceta  *mat.Dense
 	sigma *mat.Dense
@@ -91,7 +92,7 @@ func newContext() (*context, error) {
 }
 
 func (ctx *context) fit(ps []float64, settings *optimize.Settings, method optimize.Method) (*optimize.Result, error) {
-	res, err := FitChi2(ctx.chi2, ps, settings, method)
+	res, err := FitChi2(ctx, ctx.chi2, ps, settings, method)
 	if err != nil {
 		return res, err
 	}
